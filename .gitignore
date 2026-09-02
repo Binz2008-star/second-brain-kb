@@ -24,3 +24,10 @@ build/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+# Hugging Face cache and large model files
+hf_cache/
+*.zip
+*.safetensors
+*.bin
+*.lock
