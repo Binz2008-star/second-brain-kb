@@ -1,0 +1,195 @@
+"""
+Evolve - Self-evolution engine
+Agent analyzes its own failures and improves its tools/code
+"""
+import asyncio
+import os
+import re
+from pathlib import Path
+from datetime import datetime
+import asyncpg
+from dotenv import load_dotenv
+import aiohttp
+
+ROOT = Path(__file__).parent
+load_dotenv(ROOT / ".env")
+
+NEON_DSN = os.getenv("NEON_DSN")
+OLLAMA_EMBED_URL = os.getenv("OLLAMA_EMBED_URL", "http://127.0.0.1:11434/api/embed")
+EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text")
+# Durable-state AGENTS.md is what OpenCode loads into context each session.
+AGENTS_MD = Path(os.getenv("SECOND_BRAIN_AGENTS_MD", r"C:\Users\loyal\.config\opencode\AGENTS.md"))
+
+class Evolver:
+    def __init__(self):
+        self.root = ROOT
+        self.memory_dir = self.root / "memory"
+        self.memory_dir.mkdir(exist_ok=True)
+        self._pool = None
+
+    async def get_pool(self):
+        if self._pool is None:
+            self._pool = await asyncpg.create_pool(NEON_DSN, min_size=1, max_size=4, command_timeout=120)
+        return self._pool
+
+    async def embed(self, text: str):
+        """Generate embedding for text"""
+        if not text or not text.strip():
+            return [0.0] * 768
+        async with aiohttp.ClientSession() as s:
+            for _ in range(3):
+                try:
+                    async with s.post(OLLAMA_EMBED_URL, json={"model": EMBED_MODEL, "input": text}) as r:
+                        j = await r.json()
+                        return j["embeddings"][0]
+                except Exception:
+                    await asyncio.sleep(1)
+        raise RuntimeError("embed failed")
+
+    async def analyze_failures(self):
+        """Analyze recent conversations for failures"""
+        try:
+            pool = await self.get_pool()
+            async with pool.acquire() as conn:
+                rows = await conn.fetch("""
+                    SELECT content FROM conversations
+                    WHERE content ~* '(❌|\\bFAILED\\b|Traceback \\(most recent call last\\)|\\bError:\\s|\\bException:\\s|\\bfailed to\\b|\\btimed out\\b|RuntimeError:|ValueError:|TypeError:|ImportError:|ModuleNotFoundError:|ConnectionError:|TimeoutError:)'
+                    ORDER BY created_at DESC LIMIT 20
+                """)
+            return [r["content"] for r in rows]
+        except Exception:
+            return []
+
+    async def evolve_chunker(self):
+        """Improve chunker based on search quality"""
+        try:
+            pool = await self.get_pool()
+            async with pool.acquire() as conn:
+                low_score = await conn.fetchval("""
+                    SELECT COUNT(*) FROM conversations
+                    WHERE content LIKE '%score=0.2%' OR content LIKE '%No results%' OR content LIKE '%no relevant%'
+                """)
+            if low_score and low_score > 5:
+                print(f"⚠️  Detected {low_score} low-score searches - chunker may need improvement")
+                return "Consider reducing chunk_size to 800, improving AST chunker for better boundaries"
+        except Exception:
+            pass
+        return None
+
+    async def evolve_tools(self):
+        """Check which tools fail most and improve them"""
+        failures = await self.analyze_failures()
+        if not failures:
+            print("✅ No failures detected - system healthy")
+            return
+
+        print(f"🔍 Found {len(failures)} failures to analyze")
+        fixes = []
+        for f in failures:
+            if "File not found" in f or "No such file" in f:
+                fixes.append("Improve path resolution - add more fallback paths for project roots")
+            if "embedding" in f.lower() and "vector" in f.lower():
+                fixes.append("Vector dimension mismatch - check EMBED_DIM consistency across stores")
+            if "timeout" in f.lower() or "timed out" in f.lower():
+                fixes.append("Increase shell/chat timeout, add retry with backoff")
+
+        if fixes:
+            lessons_path = self.memory_dir / "LESSONS.md"
+            unique_fixes = list(set(fixes))
+            with open(lessons_path, 'a', encoding='utf-8') as fh:
+                fh.write(f"\n## {datetime.now()} - Auto-evolution\n")
+                for fix in unique_fixes:
+                    fh.write(f"- {fix}\n")
+            print(f"📝 Added {len(unique_fixes)} lessons to {lessons_path}")
+            
+            # Auto-embed lessons for searchable memory
+            print("🔮 Embedding lessons for searchable memory...")
+            pool = await self.get_pool()
+            for fix in unique_fixes:
+                try:
+                    emb = await self.embed(fix)
+                    emb_str = "[" + ",".join(f"{x:.6f}" for x in emb) + "]"
+                    async with pool.acquire() as conn:
+                        await conn.execute("""
+                            INSERT INTO memory (type, content, project_id, embedding)
+                            VALUES ($1, $2, $3, $4::vector)
+                        """, "lesson", fix, "second-brain", emb_str)
+                    print(f"   ✓ Embedded: {fix[:60]}...")
+                except Exception as e:
+                    print(f"   ⚠️ Failed to embed lesson: {e}")
+
+    async def generate_improvements(self):
+        """Use LLM to suggest code improvements"""
+        improvements = [
+            "Chunk TypeScript/JavaScript ASTs (currently Python only) for better symbol boundaries",
+            "Auto-embed lessons for detected failures (evolve_tools only appends to LESSONS.md, no embedding/searchable)",
+            "Add streaming for agent tool calls in the Web UI",
+            "Auto-commit after successful task with conventional commit message",
+            "Add file watcher for MEMORY.md auto-reload",
+        ]
+
+        todo_path = self.root / "EVOLVE_TODO.md"
+        with open(todo_path, 'w', encoding='utf-8') as f:
+            f.write(f"# Evolution TODO - {datetime.now()}\n\n")
+            for imp in improvements:
+                f.write(f"- [ ] {imp}\n")
+
+        print(f"📋 Generated evolution TODOs: {todo_path}")
+        return improvements
+
+    def apply_proposals(self, improvements):
+        """Auto-apply proposals into the durable-state 'Not done / next' list.
+
+        Idempotent (skips text already present) and non-destructive (only ever
+        appends to that list, never rewrites existing lines). Failures fail soft.
+        """
+        if not AGENTS_MD.exists():
+            print(f"   ⚠️ Auto-apply skipped: {AGENTS_MD} not found")
+            return 0
+        text = AGENTS_MD.read_text(encoding="utf-8")
+        added = [imp for imp in improvements if imp not in text]
+        if not added:
+            print("   ✓ No new proposals — AGENTS.md already current")
+            return 0
+        anchor = "### Not done / next"
+        start = text.find(anchor)
+        if start == -1:
+            print(f"   ⚠️ Auto-apply skipped: '{anchor}' block not found in {AGENTS_MD.name}")
+            return 0
+        # Insert just before the next heading after the anchor block.
+        tail = text[start:]
+        m = re.search(r"\n#{2,3} ", tail)
+        end = start + m.start() + 1 if m else len(text)
+        insertion = "".join(f"- {imp}\n" for imp in added) + "\n"
+        AGENTS_MD.write_text(text[:end] + insertion + text[end:], encoding="utf-8")
+        print(f"   ✓ Auto-applied {len(added)} proposal(s) to {AGENTS_MD.name}")
+        return len(added)
+
+
+async def evolve():
+    print("🧬 Starting self-evolution...\n")
+    ev = Evolver()
+
+    print("1. Analyzing failures...")
+    await ev.evolve_tools()
+
+    print("\n2. Checking chunker quality...")
+    suggestion = await ev.evolve_chunker()
+    if suggestion:
+        print(f"   Suggestion: {suggestion}")
+
+    print("\n3. Generating improvements...")
+    imps = await ev.generate_improvements()
+    for imp in imps:
+        print(f"   - {imp}")
+
+    print("\n4. Auto-applying proposals to AGENTS.md (durable state)...")
+    ev.apply_proposals(imps)
+
+    print("\n✅ Evolution complete. Check memory/LESSONS.md, EVOLVE_TODO.md, AGENTS.md")
+    if ev._pool:
+        await ev._pool.close()
+
+
+if __name__ == "__main__":
+    asyncio.run(evolve())

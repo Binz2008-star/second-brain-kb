@@ -1,0 +1,28 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system deps
+RUN apt-get update && apt-get install -y git curl && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install v4 extra deps (API + web)
+RUN pip install --no-cache-dir fastapi uvicorn python-multipart jinja2
+
+# Copy app (api.py, brain_agent_v4.py, memory module, ui)
+COPY api.py .
+COPY brain_agent_v4.py .
+COPY memory.py .
+COPY v4-extract/second-brain-v4/chunker_v4.py v4-extract/second-brain-v4/
+COPY ui/ ui/
+
+# Create dirs
+RUN mkdir -p /app/memory /app/logs /app/ui /app/v4-extract/second-brain-v4 /app/projects
+
+# Placeholder for env (secrets injected via env_file at runtime)
+EXPOSE 8000
+
+CMD ["python", "api.py"]

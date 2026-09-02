@@ -1,0 +1,176 @@
+{
+  "cpu": 37,
+  "mem": {
+    "used": 15.35,
+    "total": 15.95,
+    "free": 0.59,
+    "active": 15.35
+  },
+  "disk": {
+    "used": 361.45,
+    "total": 446.21,
+    "free": 84.76,
+    "usePct": 81.01
+  },
+  "net": {
+    "in": 1043023562,
+    "out": 779179692
+  },
+  "battery": null,
+  "temperature": null,
+  "cpu_cores": [
+    41,
+    34,
+    41,
+    56,
+    31,
+    53,
+    31,
+    22,
+    44,
+    41,
+    16,
+    34
+  ],
+  "cpu_freq": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+  ],
+  "processes": [
+    {
+      "name": "System Idle Process",
+      "pid": null,
+      "cpu": 0,
+      "memory": null
+    },
+    {
+      "name": "System",
+      "pid": 4,
+      "cpu": 0,
+      "memory": null
+    },
+    {
+      "name": "Secure System",
+      "pid": 188,
+      "cpu": 0,
+      "memory": null
+    },
+    {
+      "name": "Registry",
+      "pid": 232,
+      "cpu": 0,
+      "memory": null
+    },
+    {
+      "name": "smss",
+      "pid": 776,
+      "cpu": 0,
+      "memory": null
+    },
+    {
+      "name": "csrss",
+      "pid": 1124,
+      "cpu": 0,
+      "memory": null
+    },
+    {
+      "name": "csrss",
+      "pid": 1304,
+      "cpu": 0,
+      "memory": null
+    },
+    {
+      "name": "wininit",
+      "pid": 1312,
+      "cpu": 0,
+      "memory": null
+    },
+    {
+      "name": "winlogon",
+      "pid": 1376,
+      "cpu": 0,
+      "memory": null
+    },
+    {
+      "name": "services",
+      "pid": 1456,
+      "cpu": 0,
+      "memory": null
+    },
+    {
+      "name": "LsaIso",
+      "pid": 1476,
+      "cpu": 0,
+      "memory": null
+    },
+    {
+      "name": "lsass",
+      "pid": 1484,
+      "cpu": 0,
+      "memory": null
+    },
+    {
+      "name": "svchost",
+      "pid": 1616,
+      "cpu": 0,
+      "memory": null
+    },
+    {
+      "name": "fontdrvhost",
+      "pid": 1648,
+      "cpu": 0,
+      "memory": null
+    },
+    {
+      "name": "fontdrvhost",
+      "pid": 1656,
+      "cpu": 0,
+      "memory": null
+    },
+    {
+      "name": "svchost",
+      "pid": 1748,
+      "cpu": 0,
+      "memory": null
+    },
+    {
+      "name": "svchost",
+      "pid": 1796,
+      "cpu": 0,
+      "memory": null
+    },
+    {
+      "name": "dwm",
+      "pid": 1872,
+      "cpu": 0,
+      "memory": null
+    },
+    {
+      "name": "svchost",
+      "pid": 1984,
+      "cpu": 0,
+      "memory": null
+    },
+    {
+      "name": "svchost",
+      "pid": 2008,
+      "cpu": 0,
+      "memory": null
+    }
+  ],
+  "system": {
+    "host": "ROBEN",
+    "os": "Windows_NT 10.0.26200",
+    "gpu": null
+  }
+}
