@@ -1,9 +1,9 @@
-import express from "express";
-import path from "path";
-import fs from "fs";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+import express from "express";
+import fs from "fs";
+import path from "path";
+import { createServer as createViteServer } from "vite";
 
 dotenv.config();
 
@@ -14,7 +14,7 @@ const PORT = process.env.PORT || 3000;
 //  Environment Configuration
 // ============================================================
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "AIzaSyfallback_key_for_development_only";
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 const NEON_DSN = process.env.NEON_DSN || "postgresql://postgres:postgres@localhost:5432/second_brain";
 const BRAIN_API_URL = process.env.BRAIN_API_URL || "http://localhost:8000";
 
@@ -63,7 +63,7 @@ const PROJECTS_DEF: Record<string, ProjectInfo> = {
     tech: "TypeScript • Express • AI Voice",
     icon: "PhoneCall",
   },
-  content-engine: {
+  "content-engine": {
     id: "content-engine",
     name: "Robin Content Engine v2",
     description: "Automated media generation, multi-platform publishing and analytics engine",
@@ -203,7 +203,7 @@ app.get("/api/system", (_req, res) => {
     currentProject: currentProjectId,
   };
   res.json(telemetry);
-}
+});
 
 // --- 2. GET /api/projects ---
 app.get("/api/projects", (_req, res) => {
@@ -314,7 +314,7 @@ app.post("/api/fs/write", (req, res) => {
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
-}
+});
 
 // --- 7. GET /api/metrics/latency ---
 app.get("/api/metrics/latency", (_req, res) => {
@@ -358,7 +358,7 @@ app.get("/api/metrics/latency", (_req, res) => {
         reasoningMode: "fast",
         projectId: "ai-dashboard",
         hasArtifact: false,
-        status: "success",
+        status: "success" as const,
       },
       {
         id: "run-002",
@@ -376,7 +376,7 @@ app.get("/api/metrics/latency", (_req, res) => {
         reasoningMode: "fast",
         projectId: "content-engine",
         hasArtifact: true,
-        status: "success",
+        status: "success" as const,
       },
     ];
 
@@ -387,11 +387,11 @@ app.get("/api/metrics/latency", (_req, res) => {
   const avg =
     total > 0
       ? Math.round(
-          latencyHistory.reduce(
-            (s, r) => s + r.totalLatencyMs,
-            0
-          ) / total
-        )
+        latencyHistory.reduce(
+          (s, r) => s + r.totalLatencyMs,
+          0
+        ) / total
+      )
       : 0;
   const fastest = total > 0 ? Math.min(...latencyHistory.map((r) => r.totalLatencyMs)) : 0;
 
@@ -401,7 +401,7 @@ app.get("/api/metrics/latency", (_req, res) => {
   const p95 = sorted[p95Index] || avg;
 
   // Breakdown by reasoning mode
-  const modeStats = {
+  const modeStats: Record<string, { count: number; totalMs: number; avgMs: number }> = {
     fast: { count: 0, totalMs: 0, avgMs: 0 },
     advanced: { count: 0, totalMs: 0, avgMs: 0 },
     security: { count: 0, totalMs: 0, avgMs: 0 },
@@ -429,7 +429,7 @@ app.get("/api/metrics/latency", (_req, res) => {
       modeStats,
     },
   });
-}
+});
 
 // --- 8. POST /api/metrics/latency/simulate ---
 app.post("/api/metrics/latency/simulate", (req, res) => {
@@ -567,12 +567,12 @@ app.post("/api/code/review", async (req, res) => {
         title: isAr
           ? "اشتباه تسريب مفاتيح أو أسرار برمجية (Hardcoded Secret)"
           : "Hardcoded secret or credential suspected",
-          description: isAr
-            ? "تم رصد تعيين قيم مفاتيح حساسة مباشرة داخل الكود. يجب نقلها حصرياً إلى متغيرات البيئة (process.env / os.getenv)."
-            : "Directly assigned secrets in source code present critical exposure risk. Store in environment variables.",
-          suggestedFix: `import os\nAPI_KEY = os.getenv("API_KEY")\nif not API_KEY:\n    raise ValueError("Missing API_KEY env var")`,
-          lineRange: "L10-L18",
-        });
+        description: isAr
+          ? "تم رصد تعيين قيم مفاتيح حساسة مباشرة داخل الكود. يجب نقلها حصرياً إلى متغيرات البيئة (process.env / os.getenv)."
+          : "Directly assigned secrets in source code present critical exposure risk. Store in environment variables.",
+        suggestedFix: `import os\nAPI_KEY = os.getenv("API_KEY")\nif not API_KEY:\n    raise ValueError("Missing API_KEY env var")`,
+        lineRange: "L10-L18",
+      });
     }
 
     // Input validation detection
@@ -590,12 +590,12 @@ app.post("/api/code/review", async (req, res) => {
         title: isAr
           ? "تعزيز تدقيق سلامة المدخلات (Input Sanitization & Validation)"
           : "Enforce input sanitization & boundary validation",
-          description: isAr
-            ? "ينصح بإضافة تدقيق صارم للأنواع والحدود القصوى للحقول الواردة في الحزم لتفادي هجمات حقن البيانات أو الأخطاء غير المعالجة."
-            : "Ensure strict boundary validation on incoming payloads to guard against injection or malformed data attacks.",
-          suggestedFix: `if not isinstance(payload, dict) or len(payload) > 5000:\n    raise ValueError("Invalid or oversized payload")`,
-          lineRange: "L45-L55",
-        });
+        description: isAr
+          ? "ينصح بإضافة تدقيق صارم للأنواع والحدود القصوى للحقول الواردة في الحزم لتفادي هجمات حقن البيانات أو الأخطاء غير المعالجة."
+          : "Ensure strict boundary validation on incoming payloads to guard against injection or malformed data attacks.",
+        suggestedFix: `if not isinstance(payload, dict) or len(payload) > 5000:\n    raise ValueError("Invalid or oversized payload")`,
+        lineRange: "L45-L55",
+      });
     }
 
     // Always provide proactive optimization suggestion if clean
@@ -622,10 +622,10 @@ app.post("/api/code/review", async (req, res) => {
       overall >= 95
         ? "A+"
         : overall >= 88
-        ? "A"
-        : overall >= 80
-        ? "B"
-        : "C";
+          ? "A"
+          : overall >= 80
+            ? "B"
+            : "C";
 
     const summary = isAr
       ? `تم إتمام التدقيق التلقائي لكود ${title}: المستوى الهندسي ${grade} (${overall}/100). مؤشر الأداء: ${perfScore}%، ومؤشر الأمان: ${secScore}%. تم رصد ${suggestions.length} توصية لتحسين الكفاءة والحماية.`
@@ -644,7 +644,7 @@ app.post("/api/code/review", async (req, res) => {
   } catch (err: any) {
     res.status(500).json({ error: err.message || "Failed to analyze code" });
   }
-}
+});
 
 // --- 10. POST /api/github/repo ---
 app.post("/api/github/repo", async (req, res) => {
@@ -772,7 +772,7 @@ app.post("/api/github/import", async (req, res) => {
     PROJECTS_DEF[finalId] = {
       id: finalId,
       name: projName,
-      description: data.description || `Imporeted from GitHub: ${data.full_name}`,
+      description: data.description || `Imported from GitHub: ${data.full_name}`,
       path: `github:${data.full_name}`,
       tech: techStack,
       icon: "FolderGit2",
@@ -802,7 +802,7 @@ app.post("/api/github/import", async (req, res) => {
   } catch (err: any) {
     res.status(500).json({ error: err.message || "Failed to import repository" });
   }
-}
+});
 
 // ============================================================
 //  Start Server
@@ -839,13 +839,13 @@ app.get("/api/health", (_req, res) => {
 // Start the server
 const server = app.listen(PORT, "0.0.0.0", () => {
   console.log(`🧠 Code It - Intelligence Console is running`);
-  console.log(`   🌐  Frontend:   http://localhost:${PORT}`);
-  console.log(`   🔧  Backend:    http://localhost:${PORT}/api`);
-  console.log(`   🧠  Projects:   ${Object.keys(PROJECTS_DEF).join(", ")}`);
-  console.log(`   🧠  Current:    ${currentProjectId}`);
-  console.log(`   📡  Gemini:     ${GEMINI_API_KEY ? "Configured" : "Fallback mode"}`);
+  console.log(`    🌐  Frontend:   http://localhost:${PORT}`);
+  console.log(`    🔧  Backend:    http://localhost:${PORT}/api`);
+  console.log(`    🧠  Projects:   ${Object.keys(PROJECTS_DEF).join(", ")}`);
+  console.log(`    🧠  Current:    ${currentProjectId}`);
+  console.log(`    📡  Gemini:     ${GEMINI_API_KEY ? "Configured" : "Fallback mode"}`);
   console.log(
-    `   📊  Metrics:    http://localhost:${PORT}/api/metrics/latency`
+    `    📊  Metrics:    http://localhost:${PORT}/api/metrics/latency`
   );
 });
 
