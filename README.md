@@ -1,18 +1,21 @@
-# Second Brain v4 — Autonomous Self-Evolving Code Knowledge Base
+# Second Brain v4 — Autonomous Self-Evolving Code Knowledge Base (Code It)
 
-A local-first, AI-powered knowledge base that indexes your code, enables semantic search, runs multi-agent coding tasks, and evolves itself over time.
+A local-first, AI-powered knowledge base that indexes your code, enables semantic search, runs multi-agent coding tasks, and evolves itself over time. Includes **Code It** — a modern chat-first React/TypeScript dashboard.
 
 ## Features
 
-- **Hybrid Search**: Vector (HNSW) + BM25 keyword + code graph traversal
-- **AST-Aware Chunking**: Python, JavaScript, TypeScript (tree-sitter)
+- **Hybrid Search (RRF)**: Vector (HNSW) + BM25 keyword via Reciprocal Rank Fusion (`rrf_k=60`)
+- **AST-Aware Chunking**: Python (ast), JavaScript/TypeScript (tree-sitter)
 - **Multi-Agent Pipeline**: Researcher → Architect → Editor → Tester → Memory
 - **Long-Term Memory**: Persistent lessons, patterns, preferences (Neon + Markdown)
 - **Self-Evolution**: Analyzes failures, suggests improvements, auto-applies to AGENTS.md
 - **Unified CLI**: `sb chat` / `sb agent` / `sb search` / `sb status` / `sb evolve` / `sb ui`
-- **Web UI**: Search, chat, agent streaming, memory browser at `http://localhost:8000`
+- **Code It Dashboard**: Chat-first React/TypeScript UI at `http://localhost:3000`
+  - Sidebar: projects, conversations, telemetry, reasoning modes
+  - Artifacts drawer with syntax highlighting, markdown export
+  - GitHub import, project create/switch, code review, latency metrics
 - **MCP Server**: OpenCode/Claude integration via `search_brain`, `agent_task`, `get_status`, `list_memory`
-- **Docker Ready**: Single-container deployment with health checks
+- **Docker Ready**: Two-service deployment (`second-brain` + `code-it-dashboard`)
 - **File Watcher**: Auto-reloads MEMORY.md/LESSONS.md on changes
 
 ## Quick Start
@@ -41,24 +44,33 @@ python sb.py agent "add authentication to lvyy project"
 # Interactive chat
 python sb.py chat
 
-# Start Web UI + API
+# Start Web UI + API (legacy)
 python sb.py ui
 
 # Self-evolution
 python sb.py evolve
 ```
 
-## Docker
+## Docker (Unified)
 
 ```bash
-# Build and run
-docker compose -f docker-compose.v4.yml up -d --build
+# Build and run both services
+docker compose up -d --build
+
+# Services:
+#   second-brain      → FastAPI on :8000  (POST /api/agent/run, /api/agent/stream, /api/search, /api/system, /data.json)
+#   code-it-dashboard → React on :3000    (Chat-first UI, proxies to brain)
 
 # Check health
-curl http://localhost:8000/status
+curl http://localhost:8000/api/status      # → chunks_v4, memory, code_graph, projects
+curl http://localhost:8000/api/system      # → ROBEN 12 cores, 81% disk
+curl http://localhost:3000/api/projects    # → rico, lvyy, content-engine, second-brain, ai-dashboard
+
+# Open Code It Dashboard
+open http://localhost:3000
 
 # Stop
-docker compose -f docker-compose.v4.yml down
+docker compose down
 ```
 
 Environment variables in `.env`:

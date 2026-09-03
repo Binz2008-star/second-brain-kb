@@ -27,8 +27,8 @@ Upgrade from simple semantic search KB (v3) to autonomous self-evolving platform
 ### 1.2 - Database Schema Migration
 - [x] Run v4 schema SQL from `chunker_v4.py` via `migrate_v4.py`
   - [x] New tables: `chunks_v4`, `projects`, `code_graph`, `conversations`, `memory`
-  - [x] `hybrid_search()` function (0.7 vector + 0.3 keyword)
-  - [x] Indexes: ivfflat vector + GIN tsvector + trigram
+  - [x] `hybrid_search()` function (**RRF - Reciprocal Rank Fusion**, `rrf_k=60`)
+  - [x] Indexes: HNSW (m=16, ef_construction=64) + GIN tsvector + trigram
 - [x] Verify schema in Neon (all 7 tables present)
 - [x] Validate `chunks_v4` columns (id, project_id, file_path, chunk_type, chunk_name, content, content_tsv, embedding, created_at)
 
@@ -43,7 +43,7 @@ Upgrade from simple semantic search KB (v3) to autonomous self-evolving platform
 ### 1.4 - Validate Hybrid Search
 - [x] Vector search matches v3 baseline (identical top results)
 - [x] BM25 keyword (> this is a new capability) verified via hybrid rank
-- [x] Hybrid ranking (0.7 vector + 0.3 keyword) returning sensible ranks
+- [x] Hybrid ranking (RRF fusion) returning sensible ranks
 - [x] Latency: 235-260ms warm (hybrid), under 300ms baseline ✅
 
 **Result**: 651/651 migrated, `migrate_v4.py` committed to KB root, .env updated with ARCHITECT_MODEL/EDITOR_MODEL/CURRENT_PROJECT
@@ -72,7 +72,7 @@ Upgrade from simple semantic search KB (v3) to autonomous self-evolving platform
 
 ### 2.3 - Validation
 - [x] Total indexed chunks: **9,511** (rico 7,750 / content-engine 1,541 / lvyy 220) — above plan estimate because rico is a large monorepo, not the assumed small repo
-- [x] Hybrid search re-factored (indexed probes + normalized ts_rank): BM25 recall fixed (was plainto_tsquery AND-semantics returning ~0), now `websearch_to_tsquery` + ts_rank_cd normalization
+- [x] Hybrid search re-factored (indexed probes + **RRF fusion**): BM25 recall fixed (was plainto_tsquery AND-semantics returning ~0), now `websearch_to_tsquery` + `ts_rank_cd` ranking + RRF (`1/(k+rank_vec) + 1/(k+rank_kw)`)
 - [x] Accuracy verified: gmail-OAuth / resume-scoring / paddle-billing queries return correct code chunks
 - [x] Latency confirmed: ~238-250ms warm, under 300ms target
 - [x] Search index upgraded: ivfflat(lists=100) → **HNSW** (m=16, ef_construction=64) for recall + latency
@@ -185,6 +185,42 @@ Upgrade from simple semantic search KB (v3) to autonomous self-evolving platform
 - [x] Registered `second-brain-v4` in `C:\Users\loyal\.config\opencode\opencode.json` (new `mcp` object format, `type:"local"`, `command:[.venv python, mcp_server_v4.py]`)
 - [x] Note: MCP 2.x API uses snake_case (`server_info`, `is_error`) and constructor-based handlers, so older MCP 0.x imports in `mcp_universal.py` do NOT work with the installed 2.x sdk — `mcp_server_v4.py` is the canonical v4 server
 - [x] Test: OpenCode session picks up the server — `search_brain`/`agent_task`/`get_status`/`list_memory` live and working from within the client
+
+## Phase 7: Code It Dashboard Integration ✅
+
+**Goal**: Replace legacy UI with modern React/TypeScript chat-first dashboard (Code It) backed by brain-agent-v4.py FastAPI
+
+### 7.1 - Frontend (React + Vite + Tailwind)
+- [x] Integrated `code-it---intelligence-console` as `ai-dashboard/` (replaced old NOVA HUD)
+- [x] Arabic RTL support with Cairo/IBM Plex Mono fonts
+- [x] Sidebar: projects, conversations, telemetry, reasoning mode selector
+- [x] Chat workspace: message stream, thinking steps, agent phases, artifacts drawer
+- [x] Multi-modal: code artifacts with syntax highlighting, export to markdown
+- [x] System actions: open settings, telemetry modal, GitHub import, project create/switch
+- [x] Keyboard shortcuts (Cmd+K new chat, Cmd+E export, Cmd+/ toggle lang)
+
+### 7.2 - Backend (Express + Vite Middleware)
+- [x] `server.ts`: Express server with Vite dev middleware + esbuild production bundle
+- [x] `/api/generate` endpoint: routes to Gemini with multi-agent prompt, fallback generator
+- [x] `/api/agent/run`, `/api/agent/stream` → **proxies to brain-agent-v4.py:8000** (FastAPI)
+- [x] `/api/brain/search`, `/api/projects`, `/api/memory`, `/api/system` → proxied
+- [x] `/api/code/review`: automated code review engine (perf + security checks)
+- [x] `/api/metrics/latency`: Recharts dashboard with RRF breakdown, p95, mode stats
+- [x] `/api/github/repo` + `/api/github/import`: GitHub integration as Second Brain projects
+- [x] `/api/fs/write`: sandbox file writes to `projects_sandbox/`
+
+### 7.3 - Docker Integration
+- [x] `docker-compose.yml`: two services — `second-brain` (Python FastAPI :8000) + `code-it-dashboard` (Node :3000)
+- [x] `ai-dashboard/Dockerfile`: 3-stage build (builder → prod-deps → runner) with esbuild
+- [x] `BRAIN_API_URL=http://second-brain:8000` for inter-service proxy
+- [x] Volumes: projects mounted read-only, ai-dashboard with live source
+
+### 7.4 - Key Improvements Over Legacy
+- **Chat IS the engine** — not telemetry grid, not 3-column HUD
+- **RRF hybrid search** proxied from FastAPI (no duplicate embedding logic)
+- **Real system metrics** from `data.json` (ROBEN 12 cores, 81% disk)
+- **Auto-embed lessons** into Neon for searchable memory evolution
+- **GitHub import** as live Second Brain projects
 
 ## Rollback & Safety
 

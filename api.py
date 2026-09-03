@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import List, Optional, AsyncGenerator
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import asyncpg
@@ -40,6 +40,9 @@ except Exception:
 from brain_agent_v4 import search_brain, PROJECTS, CURRENT_PROJECT, embed, run_multi_agent_stream, close_pool
 
 from contextlib import asynccontextmanager
+
+# Data.json path (from ai-dashboard)
+DATA_JSON_PATH = Path(os.getenv("DATA_JSON_PATH", str(ROOT / "ai-dashboard" / "data.json")))
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -275,13 +278,51 @@ import concurrent.futures
 
 @app.get("/api/system")
 async def api_system():
-    """System telemetry: CPU, memory, disk"""
+    """System telemetry: CPU, memory, disk - reads from data.json or live psutil"""
     try:
-        # Test with a simple response first
         import time
         start = time.time()
         
-        # Initialize CPU measurement (non-blocking)
+        # Try reading from data.json first (updated by external collector)
+        if DATA_JSON_PATH.exists():
+            try:
+                with open(DATA_JSON_PATH, 'r') as f:
+                    data = json.load(f)
+                # Convert to expected format
+                cpu_cores = data.get("cpu_cores", [])
+                cpu_total = data.get("cpu", 0)
+                if not cpu_total and cpu_cores:
+                    cpu_total = sum(cpu_cores) / len(cpu_cores)
+                
+                mem = data.get("mem", {})
+                disk = data.get("disk", {})
+                
+                result = {
+                    "cpu": {
+                        "total_percent": cpu_total,
+                        "per_core_percent": cpu_cores,
+                        "core_count": len(cpu_cores) if cpu_cores else psutil.cpu_count(logical=True),
+                        "cpu_freq": data.get("cpu_freq", "3.4 GHz"),
+                    },
+                    "memory": {
+                        "total_bytes": int((mem.get("total", 16) or 16) * 1024**3),
+                        "available_bytes": int((mem.get("free", 1) or 1) * 1024**3),
+                        "used_bytes": int((mem.get("used", 15) or 15) * 1024**3),
+                        "percent": mem.get("percent", 0),
+                    },
+                    "disk": {
+                        "total_bytes": int((disk.get("total", 446) or 446) * 1024**3),
+                        "used_bytes": int((disk.get("used", 361) or 361) * 1024**3),
+                        "free_bytes": int((disk.get("free", 85) or 85) * 1024**3),
+                        "percent": disk.get("usePct", 0),
+                    },
+                    "elapsed_ms": int((time.time() - start) * 1000)
+                }
+                return result
+            except Exception:
+                pass  # Fall through to live psutil
+        
+        # Fallback: live psutil measurement
         psutil.cpu_percent(interval=None, percpu=True)
         time.sleep(0.1)
         cpu_percent_per_core = psutil.cpu_percent(interval=None, percpu=True)
@@ -314,6 +355,14 @@ async def api_system():
     except Exception as e:
         import traceback
         return {"error": str(e), "trace": traceback.format_exc()}
+
+
+@app.get("/data.json")
+async def get_data_json():
+    """Serve the data.json file from ai-dashboard"""
+    if DATA_JSON_PATH.exists():
+        return JSONResponse(content=json.loads(DATA_JSON_PATH.read_text()))
+    return {"error": "data.json not found", "path": str(DATA_JSON_PATH)}
 
 
 # Benchmark metrics storage (in-memory, persisted via API)

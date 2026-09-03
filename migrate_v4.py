@@ -49,24 +49,77 @@ async def run_schema(conn):
             print(f"  WARN: {stmt[:50]}... -> {e}")
     print("  v4 tables + indexes + extensions OK")
 
-    hybrid_sql = parts[0] if False else """CREATE OR REPLACE FUNCTION hybrid_search(
-    query_text TEXT, query_embedding vector(768),
-    match_count INT DEFAULT 10, vector_weight FLOAT DEFAULT 0.7)
-RETURNS TABLE (id INT, project_id TEXT, file_path TEXT, chunk_name TEXT,
-    content TEXT, similarity FLOAT, rank FLOAT) LANGUAGE plpgsql AS $$
+    hybrid_sql = """CREATE OR REPLACE FUNCTION hybrid_search(
+    query_text TEXT,
+    query_embedding vector(768),
+    match_count INT DEFAULT 10,
+    rrf_k INT DEFAULT 60
+) RETURNS TABLE (
+    id INT,
+    project_id TEXT,
+    file_path TEXT,
+    chunk_name TEXT,
+    content TEXT,
+    similarity FLOAT,
+    rank FLOAT
+) LANGUAGE plpgsql STABLE PARALLEL SAFE AS $$
+DECLARE
+    kw tsquery;
+    candidate_k INT;
 BEGIN
+    kw := websearch_to_tsquery('english', query_text);
+    IF kw IS NULL OR kw = ''::tsquery THEN
+        kw := plainto_tsquery('english', query_text);
+    END IF;
+
+    candidate_k := GREATEST(match_count * 8, 50);
+
     RETURN QUERY
-    SELECT c.id, c.project_id, c.file_path, c.chunk_name, c.content,
-        (1 - (c.embedding <=> query_embedding))::FLOAT as similarity,
-        (vector_weight * (1 - (c.embedding <=> query_embedding))
-         + (1 - vector_weight) * ts_rank(c.content_tsv, plainto_tsquery('english', query_text)))::FLOAT as rank
-    FROM chunks_v4 c
-    WHERE c.content_tsv @@ plainto_tsquery('english', query_text)
-       OR (1 - (c.embedding <=> query_embedding)) > 0.2
-    ORDER BY rank DESC LIMIT match_count;
+    WITH vec_cand AS (
+        SELECT 
+            v.id,
+            (1 - (v.embedding <=> query_embedding))::FLOAT AS vec_sim,
+            ROW_NUMBER() OVER (ORDER BY v.embedding <=> query_embedding) AS vec_rank
+        FROM chunks_v4 v
+        ORDER BY v.embedding <=> query_embedding
+        LIMIT candidate_k
+    ),
+    kw_cand AS (
+        SELECT 
+            k.id,
+            ROW_NUMBER() OVER (ORDER BY ts_rank_cd(k.content_tsv, kw) DESC) AS kw_rank
+        FROM chunks_v4 k
+        WHERE k.content_tsv @@ kw
+        ORDER BY ts_rank_cd(k.content_tsv, kw) DESC
+        LIMIT candidate_k
+    ),
+    combined AS (
+        SELECT 
+            COALESCE(v.id, k.id) AS cand_id,
+            COALESCE(v.vec_sim, (1 - (c.embedding <=> query_embedding))::FLOAT) AS vec_sim,
+            (
+                COALESCE(1.0 / (rrf_k + v.vec_rank), 0.0) + 
+                COALESCE(1.0 / (rrf_k + k.kw_rank), 0.0)
+            )::FLOAT AS rrf_score
+        FROM vec_cand v
+        FULL OUTER JOIN kw_cand k ON v.id = k.id
+        JOIN chunks_v4 c ON c.id = COALESCE(v.id, k.id)
+    )
+    SELECT
+        c.id,
+        c.project_id,
+        c.file_path,
+        c.chunk_name,
+        c.content,
+        cb.vec_sim AS similarity,
+        cb.rrf_score AS rank
+    FROM combined cb
+    JOIN chunks_v4 c ON c.id = cb.cand_id
+    ORDER BY cb.rrf_score DESC
+    LIMIT match_count;
 END; $$;"""
     await conn.execute(hybrid_sql)
-    print("  hybrid_search() OK")
+    print("  hybrid_search() OK (RRF)")
 
 
 async def populate_projects(conn):

@@ -148,21 +148,22 @@ created_at TIMESTAMPTZ
 updated_at TIMESTAMPTZ
 ```
 
-## Hybrid Search Function
+## Hybrid Search Function (RRF - Reciprocal Rank Fusion)
 
 ```sql
 CREATE OR REPLACE FUNCTION hybrid_search(
     query_text TEXT,
     query_embedding vector(768),
     match_count INT DEFAULT 10,
-    vector_weight FLOAT DEFAULT 0.7
+    rrf_k INT DEFAULT 60
 ) RETURNS TABLE (id, project_id, file_path, chunk_name, content, similarity, rank)
 ```
-- **Keyword query**: `websearch_to_tsquery` (supports OR, phrases, implicit AND)
-- **Vector candidates**: `vec_k = GREATEST(match_count * 8, 50)`
-- **Keyword candidates**: `kw_k = GREATEST(match_count * 8, 50)`
-- **Normalization**: `max_kws = MAX(ts_rank_cd)` over keyword matches
-- **Rank**: `0.7 * (1 - cosine_dist) + 0.3 * (ts_rank_cd / max_kws)`
+- **Keyword query**: `websearch_to_tsquery` (supports OR, phrases, implicit AND) with fallback to `plainto_tsquery`
+- **Vector candidates**: Top `candidate_k = GREATEST(match_count * 8, 50)` via HNSW index, ranked by cosine distance
+- **Keyword candidates**: Top `candidate_k` via GIN index, ranked by `ts_rank_cd`
+- **Fusion**: Reciprocal Rank Fusion `1/(k + rank_vec) + 1/(k + rank_kw)` — no normalization needed, robust to outliers, parameter-free
+- **Default `rrf_k = 60`** (empirically strong for code search)
+- **Result**: Best of both semantic and lexical matching, ordered by combined RRF score
 
 ## AST Chunking Strategy
 

@@ -31,3 +31,16 @@ hf_cache/
 *.safetensors
 *.bin
 *.lock
+
+# Docker volumes & data
+pgdata/
+data.json
+
+# Node.js
+node_modules/
+*.tsbuildinfo
+
+# OS/IDE
+*.swp
+*.swo
+*~

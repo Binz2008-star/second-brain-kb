@@ -77,12 +77,13 @@ CREATE INDEX IF NOT EXISTS idx_chunks_v4_project ON chunks_v4 (project_id, file_
 -- NOTE: no ANN index on memory - it's small and HNSW gave unreliable approximate recall
 CREATE INDEX IF NOT EXISTS idx_conversations_session ON conversations (session_id, created_at);
 
--- Hybrid search function (vector + normalized keyword via indexed probes)
+-- Hybrid search function (RRF - Reciprocal Rank Fusion)
+-- Better than linear scoring: no normalization needed, robust to outliers, parameter-free
 CREATE OR REPLACE FUNCTION hybrid_search(
     query_text TEXT,
     query_embedding vector(768),
     match_count INT DEFAULT 10,
-    vector_weight FLOAT DEFAULT 0.7
+    rrf_k INT DEFAULT 60
 ) RETURNS TABLE (
     id INT,
     project_id TEXT,
@@ -91,37 +92,52 @@ CREATE OR REPLACE FUNCTION hybrid_search(
     content TEXT,
     similarity FLOAT,
     rank FLOAT
-) LANGUAGE plpgsql AS $$
+) LANGUAGE plpgsql STABLE PARALLEL SAFE AS $$
 DECLARE
     kw tsquery;
-    vec_k INT;
-    kw_k INT;
-    max_kws FLOAT;
+    candidate_k INT;
 BEGIN
-    -- Free-text keyword query: supports OR/"phrase"/implicit AND without requiring every word
+    -- Prepare full-text search query
     kw := websearch_to_tsquery('english', query_text);
     IF kw IS NULL OR kw = ''::tsquery THEN
         kw := plainto_tsquery('english', query_text);
     END IF;
-    vec_k := GREATEST(match_count * 8, 50);
-    kw_k  := GREATEST(match_count * 8, 50);
 
-    -- Keyword max ts_rank over candidate set (normalized to 0..1 so it competes fairly)
-    SELECT MAX(ts_rank_cd(x.content_tsv, kw)) INTO max_kws
-    FROM chunks_v4 x
-    WHERE x.content_tsv @@ kw;
+    candidate_k := GREATEST(match_count * 8, 50);
 
     RETURN QUERY
-    WITH cand AS (
-        (
-            SELECT chunks_v4.id AS cand_id FROM chunks_v4
-            ORDER BY chunks_v4.embedding <=> query_embedding LIMIT vec_k
-        )
-        UNION
-        (
-            SELECT chunks_v4.id AS cand_id FROM chunks_v4
-            WHERE chunks_v4.content_tsv @@ kw LIMIT kw_k
-        )
+    WITH vec_cand AS (
+        -- 1. Rank top vector matches by order
+        SELECT 
+            v.id,
+            (1 - (v.embedding <=> query_embedding))::FLOAT AS vec_sim,
+            ROW_NUMBER() OVER (ORDER BY v.embedding <=> query_embedding) AS vec_rank
+        FROM chunks_v4 v
+        ORDER BY v.embedding <=> query_embedding
+        LIMIT candidate_k
+    ),
+    kw_cand AS (
+        -- 2. Rank top keyword matches by order
+        SELECT 
+            k.id,
+            ROW_NUMBER() OVER (ORDER BY ts_rank_cd(k.content_tsv, kw) DESC) AS kw_rank
+        FROM chunks_v4 k
+        WHERE k.content_tsv @@ kw
+        ORDER BY ts_rank_cd(k.content_tsv, kw) DESC
+        LIMIT candidate_k
+    ),
+    combined AS (
+        -- 3. Merge candidates and compute RRF score: 1/(k + rank)
+        SELECT 
+            COALESCE(v.id, k.id) AS cand_id,
+            COALESCE(v.vec_sim, (1 - (c.embedding <=> query_embedding))::FLOAT) AS vec_sim,
+            (
+                COALESCE(1.0 / (rrf_k + v.vec_rank), 0.0) + 
+                COALESCE(1.0 / (rrf_k + k.kw_rank), 0.0)
+            )::FLOAT AS rrf_score
+        FROM vec_cand v
+        FULL OUTER JOIN kw_cand k ON v.id = k.id
+        JOIN chunks_v4 c ON c.id = COALESCE(v.id, k.id)
     )
     SELECT
         c.id,
@@ -129,15 +145,11 @@ BEGIN
         c.file_path,
         c.chunk_name,
         c.content,
-        (1 - (c.embedding <=> query_embedding))::FLOAT as similarity,
-        (
-            vector_weight * (1 - (c.embedding <=> query_embedding))
-            + (1 - vector_weight) *
-              CASE WHEN max_kws > 0 THEN (ts_rank_cd(c.content_tsv, kw) / max_kws) ELSE 0 END
-        )::FLOAT as rank
-    FROM cand
-    JOIN chunks_v4 c ON c.id = cand.cand_id
-    ORDER BY rank DESC
+        cb.vec_sim AS similarity,
+        cb.rrf_score AS rank
+    FROM combined cb
+    JOIN chunks_v4 c ON c.id = cb.cand_id
+    ORDER BY cb.rrf_score DESC
     LIMIT match_count;
 END;
 $$;

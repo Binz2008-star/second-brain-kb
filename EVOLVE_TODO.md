@@ -1,4 +1,4 @@
-# Evolution TODO - 2026-09-02 10:24:23.274609
+# Evolution TODO - 2026-09-03 21:19:20.966423
 
 - [ ] Chunk TypeScript/JavaScript ASTs (currently Python only) for better symbol boundaries
 - [ ] Auto-embed lessons for detected failures (evolve_tools only appends to LESSONS.md, no embedding/searchable)

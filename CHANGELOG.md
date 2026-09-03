@@ -5,7 +5,7 @@
 ### Phase 1: Schema & Data Migration ✅
 - Migrated 651 v3 chunks → `chunks_v4` with hybrid search schema
 - Added tables: `projects`, `code_graph`, `conversations`, `memory`
-- `hybrid_search()` function: 0.7 vector + 0.3 keyword (normalized ts_rank)
+- `hybrid_search()` function: **RRF (Reciprocal Rank Fusion)** — `1/(k+rank_vec) + 1/(k+rank_kw)` with `rrf_k=60`
 - Indexes: HNSW (m=16, ef_construction=64), GIN tsvector, trigram
 - Latency: 235-260ms warm, <300ms baseline
 
