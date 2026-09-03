@@ -21,11 +21,14 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      - name: Install Dependencies
+      - name: Install Dependencies (ai-dashboard)
+        working-directory: ai-dashboard
         run: npm ci
 
-      - name: Verify TypeScript Compilation
+      - name: Verify TypeScript Compilation (ai-dashboard)
+        working-directory: ai-dashboard
         run: npm run lint
 
-      - name: Test Project Build
+      - name: Test Project Build (ai-dashboard)
+        working-directory: ai-dashboard
         run: npm run build
