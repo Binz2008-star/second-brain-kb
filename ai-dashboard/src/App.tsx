@@ -1,16 +1,16 @@
 /**
  * Code It - Intelligence Console / ROBEN AI OS Dashboard
- * App.tsx - Main Layout Orchestrator
+ * App.tsx - Main Layout Orchestrator with Active Reasoning Engine
  *
  * Author: Second Brain KB Team
  * License: MIT
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Header from "./components/Header";
 import Sidebar from "./components/Sidebar";
 import { AppProvider, useApp } from "./context/AppContext";
-import { Notification } from "./types";
+import { Notification, ReasoningMode } from "./types/index";
 
 // ---------------------------------------------------------------------------
 //  Workspace Views
@@ -148,68 +148,116 @@ function fmtUptime(secs: number): string {
 }
 
 // ---------------------------------------------------------------------------
-//  Agent Chat View
+//  Agent Chat View (With Reasoning Mode Controls & Auto-Scroll)
 // ---------------------------------------------------------------------------
 
 function AgentChatView() {
-  const { sendPrompt, isProcessing } = useApp();
+  const { sendPrompt, isProcessing, reasoningMode, setReasoningMode } = useApp();
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  const [messages, setMessages] = useState<{ role: "user" | "assistant"; content: string; mode?: ReasoningMode }[]>([]);
+
+  const scrollToBottom = useCallback(() => {
+    const chatContainer = document.getElementById("chat-messages-container");
+    if (chatContainer) {
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, isProcessing, scrollToBottom]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isProcessing) return;
     const content = input.trim();
     setInput("");
-    setMessages((m) => [...m, { role: "user", content }]);
+
+    setMessages((m) => [...m, { role: "user", content, mode: reasoningMode }]);
     const reply = await sendPrompt(content);
     if (reply) {
-      setMessages((m) => [...m, { role: "assistant", content: reply }]);
+      setMessages((m) => [...m, { role: "assistant", content: reply, mode: reasoningMode }]);
     } else {
       setMessages((m) => [...m, { role: "assistant", content: `⚠️ Backend unreachable. Is the FastAPI server running on :8000?` }]);
     }
   };
 
+  const modes: { id: ReasoningMode; label: string; desc: string }[] = [
+    { id: "fast", label: "⚡ Fast", desc: "Quick direct execution" },
+    { id: "deep_reasoning", label: "🧠 Deep Reasoning", desc: "Multi-step analytical reflection" },
+    { id: "architect", label: "🏗️ Architect", desc: "System design & structured planning" },
+  ];
+
   return (
     <div className="flex flex-col h-full" dir="ltr">
-      <div className="flex-1 overflow-y-auto space-y-3 p-4">
+      {/* Reasoning Mode Switcher Bar */}
+      <div className="flex items-center justify-between px-4 py-2.5 bg-black/40 border-b border-white/10 text-xs">
+        <span className="text-gray-400 font-mono text-[11px]">REASONING MODE:</span>
+        <div className="flex gap-1.5">
+          {modes.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => setReasoningMode(m.id)}
+              className={`px-2.5 py-1 rounded-lg font-mono text-[11px] transition-all ${reasoningMode === m.id
+                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-semibold"
+                  : "bg-white/5 text-gray-400 hover:bg-white/10 border border-transparent"
+                }`}
+              title={m.desc}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Messages Feed */}
+      <div id="chat-messages-container" className="flex-1 overflow-y-auto space-y-3 p-4">
         {messages.length === 0 && (
-          <div className="flex items-center justify-center h-full text-gray-600 text-sm font-mono">
-            Ask the agent a question about your projects, code, or memory…
+          <div className="flex flex-col items-center justify-center h-full text-gray-500 text-sm font-mono space-y-2">
+            <span className="text-3xl">🧠</span>
+            <p>Select a reasoning mode and enter a command...</p>
           </div>
         )}
         {messages.map((msg, i) => (
           <div
             key={i}
-            className={`max-w-[80%] px-4 py-3 rounded-xl text-sm font-mono whitespace-pre-wrap ${msg.role === "user"
+            className={`max-w-[85%] px-4 py-3 rounded-xl text-sm font-mono whitespace-pre-wrap ${msg.role === "user"
                 ? "ml-auto bg-cyan-500/20 border border-cyan-500/40 text-cyan-100"
                 : "bg-white/5 border border-white/10 text-gray-200"
               }`}
           >
+            {msg.mode && (
+              <div className="text-[9px] uppercase tracking-wider text-cyan-400/70 mb-1 border-b border-cyan-500/10 pb-1">
+                [{msg.mode.replace("_", " ")}]
+              </div>
+            )}
             {msg.content}
           </div>
         ))}
         {isProcessing && (
-          <div className="flex items-center gap-2 text-gray-500 text-xs font-mono">
-            <span className="animate-spin w-3 h-3 border-2 border-cyan-500/50 border-t-cyan-400 rounded-full" />
-            Processing…
+          <div className="flex items-center gap-2 text-cyan-400 text-xs font-mono bg-cyan-500/10 border border-cyan-500/20 p-3 rounded-xl">
+            <span className="animate-spin w-3.5 h-3.5 border-2 border-cyan-500 border-t-transparent rounded-full" />
+            Executing with [{reasoningMode}] active engine...
           </div>
         )}
       </div>
+
+      {/* Input Bar */}
       <form onSubmit={handleSubmit} className="p-3 border-t border-white/10">
         <div className="flex gap-2">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Type a command…"
+            placeholder={`Ask in [${reasoningMode}] mode...`}
             disabled={isProcessing}
-            className="flex-1 px-4 py-2.5 bg-[#0b1120] border border-white/15 rounded-xl text-sm text-white placeholder-gray-600 outline-none focus:border-cyan-500/50 transition-colors"
+            className="flex-1 px-4 py-2.5 bg-[#0b1120] border border-white/15 rounded-xl text-sm text-white placeholder-gray-600 outline-none focus:border-cyan-500/50 transition-colors font-mono"
           />
           <button
             type="submit"
             disabled={isProcessing || !input.trim()}
-            className="px-5 py-2.5 bg-gradient-to-r from-cyan-600 to-violet-600 hover:from-cyan-500 hover:to-violet-500 text-white rounded-xl text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            className="px-5 py-2.5 bg-gradient-to-r from-cyan-600 to-violet-600 hover:from-cyan-500 hover:to-violet-500 text-white rounded-xl text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all font-mono"
           >
             Send
           </button>
@@ -328,7 +376,7 @@ function PlaceholderView({ title, description }: { title: string; description: s
 }
 
 // ---------------------------------------------------------------------------
-//  Main Shell Component (inside Provider)
+//  Main Shell Component
 // ---------------------------------------------------------------------------
 
 function Shell() {
@@ -350,7 +398,7 @@ function Shell() {
 }
 
 // ---------------------------------------------------------------------------
-//  App Root (wraps with Provider)
+//  App Root
 // ---------------------------------------------------------------------------
 
 export default function App() {
