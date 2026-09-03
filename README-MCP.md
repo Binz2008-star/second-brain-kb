@@ -3,15 +3,25 @@
 
 You now have 11 MCPs that let you work on ANY project + create new projects.
 
-## What you built (your mcp_universal.py)
+## MCP Server Configuration
 
-Your universal MCP has 8 tools:
-- search_second_brain: semantic search across rico, content-engine, lvyy
-- create_project: scaffold fastapi/nextjs/fullstack at ANY path
-- analyze_project: detect stack of ANY repo
-- file_read/write/list/delete: real file ops
-- shell_run: npm, pip, git, pytest, docker
-- git_status/commit/diff
+Your MCP setup uses two configuration files:
+
+1. **`Mcp-All.json`** (`X:\second-brain-kb\Mcp-All.json`): Defines 11 MCP servers including the custom `universal-second-brain` server that wraps the Second Brain v4 brain agent.
+2. **`opencode.json`** (`C:\Users\loyal\.config\opencode\opencode.json`): Registered as `second-brain-v4` - runs `mcp_server_v4.py` with an isolated Python venv.
+
+## Custom Server: `universal-second-brain`
+
+The `universal-second-brain` MCP server (configured in `Mcp-All.json`) provides these tools via the stdio-based `mcp_server_v4.py`:
+
+- **search_brain** - Hybrid semantic search across all indexed projects (vector + BM25)
+- **agent_task** - Run the multi-agent pipeline (Researcher→Architect→Editor→Tester→Memory)
+- **get_status** - KB + DB health / counts (chunks_v4, memory, code_graph, projects)
+- **list_memory** - Read long-term memories from Neon DB
+- **apply_patch** - Apply unified diff patches to files
+- **replace_block** - Replace code blocks in files
+
+The server is configured to use `.venv` Python isolation and connects to Neon PostgreSQL + local Ollama.
 
 ## Full Stack (11 MCPs)
 
@@ -25,7 +35,7 @@ Your universal MCP has 8 tools:
 8. memory - long-term memory
 9. sequential-thinking - planning
 10. time - time
-11. universal-second-brain - YOUR CUSTOM (the brain)
+11. universal-second-brain - Second Brain v4 MCP (vector search + agent pipeline)
 
 ## Install
 
