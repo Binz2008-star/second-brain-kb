@@ -4,6 +4,11 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 import { createServer as createViteServer } from "vite";
+import { streamChat, hasAnthropicKey } from "./src/lib/anthropic.ts";
+import { estimateTokens, usableBudget, needsCompression, computeBudget } from "./src/lib/budget.ts";
+import { compressHistory } from "./src/lib/compress.ts";
+import { decideRoute } from "./src/middleware/routing.ts";
+import type { ChatRequest, Route, Message, BudgetInfo } from "./src/types/phase3.ts";
 
 dotenv.config();
 
@@ -800,6 +805,161 @@ app.post("/api/github/import", async (req, res) => {
     res.status(500).json({ error: err.message || "Failed to import repository" });
   }
 });
+
+// ============================================================
+//  Phase 3 - Intelligent Prompt Routing & Context Management
+// ============================================================
+
+function sseWrite(res: express.Response, event: string, data: unknown): void {
+  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
+function toPhase3Messages(history: any[]): Message[] {
+  if (!Array.isArray(history)) return [];
+  return history
+    .filter((m) => m && typeof m.content === "string")
+    .map((m) => ({
+      role: (m.role === "assistant" ? "assistant" : m.role === "system" ? "system" : "user") as Message["role"],
+      content: m.content,
+    }));
+}
+
+// --- 12. POST /api/phase3/route (dry-run, no LLM) ---
+app.post("/api/phase3/route", async (req, res) => {
+  try {
+    const body = (req.body || {}) as ChatRequest;
+    const history = toPhase3Messages(body.history || []);
+    const allMessages: Message[] = [{ role: "user", content: body.prompt }, ...history];
+    const tokenEstimate = estimateTokens(allMessages);
+    const budget = usableBudget();
+    const decision = await decideRoute({
+      prompt: body.prompt,
+      mode: body.mode,
+      historyLength: history.length,
+      tokenEstimate,
+    });
+
+    res.setHeader("X-Route", decision.route);
+    res.json({
+      ...decision,
+      tokenEstimate,
+      wouldCompress: needsCompression(allMessages, budget),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Routing failed" });
+  }
+});
+
+// --- 13. GET /api/phase3/budget ---
+app.get("/api/phase3/budget", (_req, res) => {
+  const info: BudgetInfo = {
+    window: 200_000,
+    used: 0,
+    remaining: usableBudget(),
+    compression: null,
+  };
+  res.json(info);
+});
+
+// --- 14. POST /api/phase3/chat (SSE, Anthropic streaming) ---
+function handlePhase3Chat(req: express.Request, res: express.Response): void {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders?.();
+
+  if (!hasAnthropicKey()) {
+    sseWrite(res, "error", { message: "ANTHROPIC_API_KEY is not configured" });
+    res.write("event: done\ndata: {}\n\n");
+    res.end();
+    return;
+  }
+
+  const body = (req.body || {}) as ChatRequest;
+  const history = toPhase3Messages(body.history || []);
+  const allMessages: Message[] = [...history, { role: "user", content: body.prompt }];
+
+  (async () => {
+    const budget = usableBudget();
+    let route: Route = body.mode || "fast";
+    let model = "";
+    let maxTokens = 1024;
+    let systemPrompt = "";
+
+    const decision = await decideRoute({
+      prompt: body.prompt,
+      mode: body.mode,
+      historyLength: history.length,
+      tokenEstimate: estimateTokens(allMessages),
+    });
+    route = decision.route;
+    model = decision.model;
+    maxTokens = decision.maxTokens;
+    systemPrompt = decision.systemPrompt;
+    res.setHeader("X-Route", route);
+
+    let messagesToSend = allMessages;
+    let compressionMeta: BudgetInfo["compression"] = null;
+    if (needsCompression(allMessages, budget)) {
+      const result = await compressHistory(allMessages, budget);
+      messagesToSend = result.messages;
+      compressionMeta = {
+        tokensUsed: result.meta.tokensUsed,
+        compressionRatio: result.meta.compressionRatio,
+        historyTruncated: !!result.meta.historyTruncated,
+        keptVerbatim: 6,
+        summarized: Math.max(0, allMessages.length - messagesToSend.length),
+      };
+      res.setHeader("X-Compression", String(compressionMeta.historyTruncated));
+    }
+
+    const controller = new AbortController();
+    req.on("close", () => {
+      if (!res.writableEnded) {
+        controller.abort();
+      }
+    });
+
+    sseWrite(res, "route", { route, model });
+    if (compressionMeta) {
+      sseWrite(res, "budget", {
+        window: budget,
+        used: compressionMeta.tokensUsed,
+        remaining: Math.max(0, budget - compressionMeta.tokensUsed),
+        compression: compressionMeta,
+      });
+    }
+
+    for await (const chunk of streamChat({
+      messages: messagesToSend,
+      model,
+      maxTokens,
+      system: systemPrompt,
+      route,
+      signal: controller.signal,
+    })) {
+      if (chunk.type === "error") {
+        sseWrite(res, "error", chunk.data);
+        break;
+      }
+      if (res.writableEnded) break;
+      sseWrite(res, chunk.type, chunk.data);
+      if (chunk.type === "done") break;
+    }
+
+    if (!res.writableEnded) {
+      res.end();
+    }
+  })().catch((err: any) => {
+    if (!res.writableEnded) {
+      sseWrite(res, "error", { message: err.message || "Chat stream failed" });
+      res.end();
+    }
+  });
+}
+
+app.post("/api/phase3/chat", handlePhase3Chat);
+app.post("/api/phase3/chat/stream", handlePhase3Chat);
 
 // ============================================================
 //  Start Server
