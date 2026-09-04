@@ -2,7 +2,7 @@ name: ROBEN AI Console Docker Build
 
 on:
   push:
-    branches: ["main", "test-env", "feat/**"]
+    branches: ["main"]
   pull_request:
     branches: ["main", "test-env", "feat/**"]
   schedule:
