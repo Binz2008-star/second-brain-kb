@@ -2,9 +2,9 @@ name: ROBEN AI Console Docker Build
 
 on:
   push:
-    branches: ["main", "test-env"]
+    branches: ["main", "test-env", "feat/**"]
   pull_request:
-    branches: ["main", "test-env"]
+    branches: ["main", "test-env", "feat/**"]
   schedule:
     # Weekly Docker build to keep image up-to-date
     cron: "0 2 * * 0"
@@ -61,7 +61,7 @@ jobs:
   deploy:
     name: Deploy Docker Image
     needs: build
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/test-env'
+    if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/test-env' || startsWith(github.ref, 'refs/heads/feat/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
