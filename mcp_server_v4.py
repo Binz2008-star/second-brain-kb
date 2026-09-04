@@ -35,7 +35,7 @@ from memory import MemoryManager
 NEON_DSN = os.getenv("NEON_DSN")
 memory_mgr = None
 try:
-    memory_mgr = MemoryManager(NEON_DSN, memory_dir=str(ROOT / "memory"))
+    memory_mgr = MemoryManager(None, memory_dir=str(ROOT / "memory"))
 except Exception as e:
     print(f"[memory disabled] {e}", file=sys.stderr)
 
