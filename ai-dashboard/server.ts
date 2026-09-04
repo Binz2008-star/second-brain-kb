@@ -9,6 +9,7 @@ import { estimateTokens, usableBudget, needsCompression, computeBudget } from ".
 import { compressHistory } from "./src/lib/compress.ts";
 import { decideRoute } from "./src/middleware/routing.ts";
 import { searchMemory, hybridSearch } from "./src/lib/search.ts";
+import { watchLessons } from "./src/lib/watcher.ts";
 import type { ChatRequest, Route, Message, BudgetInfo } from "./src/types/phase3.ts";
 
 dotenv.config();
@@ -1008,6 +1009,8 @@ app.get("/api/phase3/memory", async (req: express.Request, res: express.Response
 });
 
 // --- 17. GET /api/phase3/watcher/status (lightweight telemetry, no embedding) ---
+// Single-query optimization: SELECT COUNT + MAX in one round-trip, camelCase for frontend
+let watcher: import('fs').FSWatcher | null = null;
 app.get("/api/phase3/watcher/status", async (_req: express.Request, res: express.Response) => {
   let client: any = null;
   try {
@@ -1015,12 +1018,12 @@ app.get("/api/phase3/watcher/status", async (_req: express.Request, res: express
     const Pool = (pkg as any).default?.Pool || (pkg as any).Pool;
     const pool = new Pool({ connectionString: process.env.NEON_DSN || process.env.DATABASE_URL });
     client = await pool.connect();
-    const cnt = await client.query(`SELECT COUNT(*)::int AS count FROM memory`);
-    const latest = await client.query(`SELECT created_at FROM memory ORDER BY created_at DESC LIMIT 1`);
+    const r = await client.query(`SELECT COUNT(*)::int AS count, MAX(created_at) AS "lastIndexed" FROM memory`);
+    const watching = !!(watcher && !(watcher as any).closed);
     res.json({
-      watching: true,
-      count: cnt.rows[0]?.count ?? 0,
-      lastIndexed: latest.rows[0]?.created_at ?? null,
+      watching,
+      count: r.rows[0]?.count ?? 0,
+      lastIndexed: r.rows[0]?.lastIndexed ?? null,
       source_file: 'memory/LESSONS.md',
     });
   } catch (err: any) {
@@ -1074,6 +1077,13 @@ const server = app.listen(PORT, "0.0.0.0", () => {
   console.log(
     `    📊  Metrics:    http://localhost:${PORT}/api/metrics/latency`
   );
+  // Boot file watcher (Phase 3.2) — non-blocking, falls back to watching:false if file missing
+  try {
+    watcher = watchLessons('memory/LESSONS.md');
+    console.log(`    👁️  Watcher:  watching memory/LESSONS.md`);
+  } catch (err: any) {
+    console.warn(`    👁️  Watcher:  not started — ${err.message}`);
+  }
 });
 
 export { server };
@@ -1081,6 +1091,7 @@ export { server };
 // Graceful shutdown
 process.on("SIGTERM", async () => {
   console.log("🛑 Received SIGTERM. Shutting down gracefully...");
+  try { (watcher as any)?.close?.(); } catch {}
   await new Promise<void>((resolve) => server.close(() => resolve()));
   if (viteServer) {
     await viteServer?.close();
@@ -1090,6 +1101,7 @@ process.on("SIGTERM", async () => {
 
 process.on("SIGINT", async () => {
   console.log("🛑 Received SIGINT. Shutting down gracefully...");
+  try { (watcher as any)?.close?.(); } catch {}
   await new Promise<void>((resolve) => server.close(() => resolve()));
   if (viteServer) {
     await viteServer?.close();
