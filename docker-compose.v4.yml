@@ -9,6 +9,7 @@ services:
       POSTGRES_DB: second_brain
     volumes:
       - ./pgdata:/var/lib/postgresql/data
+      - ./schema_v4.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
       - ./database/schema_v4_memory.sql:/docker-entrypoint-initdb.d/02-memory.sql:ro
     ports:
       - "5432:5432"
@@ -27,7 +28,7 @@ services:
     ports:
       - "11434:11434"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      test: ["CMD", "ollama", "list"]
       interval: 10s
       timeout: 5s
       retries: 5
