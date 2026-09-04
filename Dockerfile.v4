@@ -11,7 +11,7 @@ FROM python:3.12-slim
 RUN apt-get update && apt-get install -y --no-install-recommends curl libpq5 && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=builder /install /usr/local
-COPY api.py brain_agent_v4.py memory.py evolve.py ./
+COPY api.py brain_agent_v4.py memory.py evolve.py AGENTS.md EVOLVE_TODO.md ./
 COPY v4-extract/second-brain-v4/chunker_v4.py v4-extract/second-brain-v4/
 COPY ui/ ui/
 RUN mkdir -p /app/memory /app/logs /app/ui /app/v4-extract/second-brain-v4 /app/projects
