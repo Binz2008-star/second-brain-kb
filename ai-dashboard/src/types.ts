@@ -160,4 +160,3 @@ export interface Conversation {
   updatedAt: number;
   messages: Message[];
 }
-

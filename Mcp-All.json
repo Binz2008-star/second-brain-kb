@@ -93,16 +93,16 @@
       "description": "Time tools"
     },
     "universal-second-brain": {
-      "command": "python",
+      "command": "X:/second-brain-kb/.venv/Scripts/python.exe",
       "args": [
-        "X:/second-brain-kb/mcp_universal.py"
+        "X:/second-brain-kb/mcp_server_v4.py"
       ],
       "env": {
         "NEON_DSN": "${NEON_DSN}",
         "OLLAMA_EMBED_URL": "http://127.0.0.1:11434/api/embed",
         "EMBED_MODEL": "nomic-embed-text"
       },
-      "description": "YOUR CUSTOM - search brain + create ANY project + file ops + shell"
+      "description": "Second Brain v4 MCP - Vector search + Agent pipeline + File ops"
     }
   }
 }
