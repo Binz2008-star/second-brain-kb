@@ -983,6 +983,30 @@ async function handlePhase3Search(req: express.Request, res: express.Response): 
 app.post("/api/phase3/search", handlePhase3Search);
 app.get("/api/phase3/search", handlePhase3Search);
 
+// --- 16. GET /api/phase3/memory (dedicated list, no embedding — fixes q=* via vector search) ---
+app.get("/api/phase3/memory", async (req: express.Request, res: express.Response) => {
+  const limit = Math.min(100, Math.max(1, parseInt((req.query.limit as string) || '20', 10) || 20));
+  let client: any = null;
+  try {
+    // Lazy import pg to avoid top-level pool duplication (reuse search.ts pool if available)
+    const pkg = await import('pg');
+    const Pool = (pkg as any).default?.Pool || (pkg as any).Pool;
+    const pool = new Pool({ connectionString: process.env.NEON_DSN || process.env.DATABASE_URL });
+    client = await pool.connect();
+    const r = await client.query(
+      `SELECT id, lesson_id, source_file, content, tags, created_at
+       FROM memory ORDER BY created_at DESC LIMIT $1`,
+      [limit]
+    );
+    res.json({ count: r.rows.length, results: r.rows });
+  } catch (err: any) {
+    console.error('[Memory List Error]:', err);
+    res.status(500).json({ error: err.message || 'Internal server error' });
+  } finally {
+    if (client) client.release();
+  }
+});
+
 // ============================================================
 //  Start Server
 // ============================================================
