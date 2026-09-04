@@ -237,6 +237,13 @@ function handleAgentEvent(data, streamDiv) {
       streamDiv.innerHTML += `<div class="agent-phase warning"><span class="phase-name">⚠️ Warning</span><div class="phase-message">${escapeHtml(data.message)}</div></div>`;
       streamDiv.scrollTop = streamDiv.scrollHeight;
       break;
+    case 'done':
+      streamDiv.innerHTML += `<div class="agent-phase completed"><span class="phase-name">✅ Done</span><div class="phase-message">${escapeHtml(data.message)}</div></div>`;
+      streamDiv.scrollTop = streamDiv.scrollHeight;
+      if (eventSource) {
+        eventSource.close();
+      }
+      break;
     case 'complete':
       streamDiv.innerHTML += `<div class="agent-phase completed"><span class="phase-name">✅ Complete</span><div class="phase-message">${escapeHtml(data.message)}</div></div>`;
       streamDiv.scrollTop = streamDiv.scrollHeight;

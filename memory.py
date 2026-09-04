@@ -109,7 +109,7 @@ class MemoryManager:
             f.write(entry)
 
         # Add to Neon with embedding
-        if embedding:
+        if embedding and self.pool is not None:
             emb_str = "[" + ",".join(f"{x:.6f}" for x in embedding) + "]"
             async with self.pool.acquire() as conn:
                 await conn.execute("""
@@ -119,6 +119,8 @@ class MemoryManager:
 
     async def search_memory(self, query_embedding, top_k=5):
         """Search long-term memory"""
+        if self.pool is None:
+            return []
         emb_str = "[" + ",".join(f"{x:.6f}" for x in query_embedding) + "]"
         async with self.pool.acquire() as conn:
             rows = await conn.fetch("""

@@ -576,3 +576,32 @@ To create and run a simple test file in Python, follow these steps:
 
 4. **Run the Test**:
    - Use py
+
+## 2026-09-04 08:03 [lesson] rico
+Task: I need you to find BUGS in the codebase at X:\second-brain-kb. This is a FastAPI application (brain_agent_v4.py, api.py, memory.py) with a multi-agent system.
+
+Focus on finding real bugs, not style issues. Look for:
+1. Logic errors, incorrect conditionals, off-by-one mistakes
+2. Broken error handling — swallowed exceptions, wrong exception types, unreachable catch blocks
+3. Null/empty input handling, edge cases
+4. Race conditions, async bugs (missing awaits, incorrect async patterns)
+5. Security issues — injection, auth bypass, hardcoded secrets
+6. Database connection bugs — wrong connection strings, unclosed connections, asyncpg issues
+7. Configuration bugs — wrong env var names, missing defaults
+
+Specifically check these files:
+- api.py (FastAPI server)
+- brain_agent_v4.py (multi-agent orchestrator)
+- memory.py (memory management)
+- docker-compose.v4.yml (docker config)
+- .env (environment config)
+- evolve.py (self-evolution)
+- mcp_server_v4.py (MCP server)
+- sb.py (CLI)
+- api.py (main API)
+
+Read the full files, don't just look at diffs. The repo is on main at commit df0d1c8.
+
+Return a concise list of confirmed bugs with file paths and line numbers. Only flag things you're confident are actual bugs.
+Plan: ERROR: model 'deepseek-r1:14b' not found
+Result: ERROR: model 'deepseek-r1:14b' not found

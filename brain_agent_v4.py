@@ -86,7 +86,7 @@ def tool_gemini_query(prompt: str) -> str:
 KB_ROOT = Path(__file__).parent
 load_dotenv(KB_ROOT / ".env")
 
-NEON_DSN = os.getenv("NEON_DSN")
+NEON_DSN = os.getenv("NEON_DSN") or os.getenv("DATABASE_URL")
 OLLAMA_EMBED_URL = os.getenv("OLLAMA_EMBED_URL", "http://127.0.0.1:11434/api/embed")
 OLLAMA_CHAT_URL = os.getenv("OLLAMA_CHAT_URL", "http://127.0.0.1:11434/api/chat")
 EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text")

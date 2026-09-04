@@ -158,16 +158,14 @@ class ASTChunker:
         return chunks
     
     def chunk_javascript(self, text: str) -> List[CodeChunk]:
-        """AST-aware JavaScript/TypeScript chunking using tree-sitter"""
+        """AST-aware JavaScript chunking using tree-sitter"""
         if not TREE_SITTER_AVAILABLE:
             return self.chunk_generic(text, "javascript")
         
         try:
             import tree_sitter_javascript as tsjs
-            import tree_sitter_typescript as tsts
             
             JS_LANGUAGE = Language(tsjs.language())
-            TS_LANGUAGE = Language(tsts.language_typescript())
             
             parser = Parser()
             parser.language = JS_LANGUAGE
@@ -248,7 +246,7 @@ class ASTChunker:
         
         return chunks
 
-    def chunk_typescript(self, text: str) -> List[CodeChunk]:
+    def chunk_typescript(self, text: str, tsx: bool = False) -> List[CodeChunk]:
         """AST-aware TypeScript chunking using tree-sitter"""
         if not TREE_SITTER_AVAILABLE:
             return self.chunk_generic(text, "typescript")
@@ -260,7 +258,7 @@ class ASTChunker:
             TSX_LANGUAGE = Language(tsts.language_tsx())
             
             parser = Parser()
-            parser.language = TS_LANGUAGE
+            parser.language = TS_LANGUAGE if not tsx else TSX_LANGUAGE
             
             tree = parser.parse(text.encode('utf-8'))
         except Exception:
@@ -341,9 +339,11 @@ class ASTChunker:
         ext = Path(file_path).suffix.lower()
         if ext == ".py":
             return self.chunk_python(text)
+        elif ext == ".tsx":
+            return self.chunk_typescript(text, tsx=True)
         elif ext in (".js", ".jsx"):
             return self.chunk_javascript(text)
-        elif ext in (".ts", ".tsx"):
+        elif ext in (".ts",):
             return self.chunk_typescript(text)
         else:
             lang = "javascript" if ext in (".js", ".ts", ".tsx") else "text"
