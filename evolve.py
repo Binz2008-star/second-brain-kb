@@ -3,10 +3,12 @@ Evolve - Self-evolution engine
 Agent analyzes its own failures and improves its tools/code
 """
 import asyncio
+import hashlib
 import os
 import re
 from pathlib import Path
 from datetime import datetime
+from typing import Optional
 import asyncpg
 from dotenv import load_dotenv
 import aiohttp
@@ -14,7 +16,7 @@ import aiohttp
 ROOT = Path(__file__).parent
 load_dotenv(ROOT / ".env")
 
-NEON_DSN = os.getenv("NEON_DSN")
+DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("NEON_DSN")
 OLLAMA_EMBED_URL = os.getenv("OLLAMA_EMBED_URL", "http://127.0.0.1:11434/api/embed")
 EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text")
 # Durable-state AGENTS.md is what OpenCode loads into context each session.
@@ -26,24 +28,32 @@ class Evolver:
         self.memory_dir = self.root / "memory"
         self.memory_dir.mkdir(exist_ok=True)
         self._pool = None
+        self._session: Optional[aiohttp.ClientSession] = None
+
+    async def _get_session(self):
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=180, connect=30)
+            )
+        return self._session
 
     async def get_pool(self):
         if self._pool is None:
-            self._pool = await asyncpg.create_pool(NEON_DSN, min_size=1, max_size=4, command_timeout=120)
+            self._pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=4, command_timeout=120)
         return self._pool
 
     async def embed(self, text: str):
-        """Generate embedding for text"""
+        """Generate embedding for text using shared aiohttp session"""
         if not text or not text.strip():
             return [0.0] * 768
-        async with aiohttp.ClientSession() as s:
-            for _ in range(3):
-                try:
-                    async with s.post(OLLAMA_EMBED_URL, json={"model": EMBED_MODEL, "input": text}) as r:
-                        j = await r.json()
-                        return j["embeddings"][0]
-                except Exception:
-                    await asyncio.sleep(1)
+        session = await self._get_session()
+        for _ in range(3):
+            try:
+                async with session.post(OLLAMA_EMBED_URL, json={"model": EMBED_MODEL, "input": text}) as r:
+                    j = await r.json()
+                    return j["embeddings"][0]
+            except Exception:
+                await asyncio.sleep(1)
         raise RuntimeError("embed failed")
 
     async def analyze_failures(self):
@@ -110,7 +120,7 @@ class Evolver:
                     emb = await self.embed(fix)
                     emb_str = "[" + ",".join(f"{x:.6f}" for x in emb) + "]"
                     # Stable, deterministic lesson_id so re-runs upsert instead of duplicating
-                    lesson_id = f"{datetime.now():%Y-%m-%d-%H%M}-{hash(fix) & 0xffffff:06x}"
+                    lesson_id = f"{datetime.now():%Y-%m-%d-%H%M}-{hashlib.md5(fix.encode()).hexdigest()[:10]}"
                     tags = ["auto", "failure", "lesson"]
                     async with pool.acquire() as conn:
                         await conn.execute("""
@@ -127,14 +137,44 @@ class Evolver:
                     print(f"   ⚠️ Failed to embed lesson: {e}")
 
     async def generate_improvements(self):
-        """Use LLM to suggest code improvements"""
-        improvements = [
-            "Chunk TypeScript/JavaScript ASTs (currently Python only) for better symbol boundaries",
-            "Auto-embed lessons for detected failures (evolve_tools only appends to LESSONS.md, no embedding/searchable)",
-            "Add streaming for agent tool calls in the Web UI",
-            "Auto-commit after successful task with conventional commit message",
-            "Add file watcher for MEMORY.md auto-reload",
-        ]
+        """Use LLM to suggest code improvements based on failure analysis"""
+        failures = await self.analyze_failures()
+        if not failures:
+            print("✅ No failures detected, using default improvement list")
+            improvements = [
+                "Chunk TypeScript/JavaScript ASTs (currently Python only) for better symbol boundaries",
+                "Add streaming for agent tool calls in the Web UI",
+                "Auto-commit after successful task with conventional commit message",
+                "Add file watcher for MEMORY.md auto-reload",
+            ]
+        else:
+            failure_text = "\n".join(failures[:10])
+            prompt = f"""Analyze these failure patterns from conversation history and suggest 4-6 concrete improvements:
+
+{failure_text}
+
+Return ONLY a numbered list of improvements, one per line. Focus on:
+1. Code quality improvements
+2. Tool reliability fixes
+3. Performance optimizations
+4. New features needed
+
+Do NOT include markdown formatting, code blocks, or explanations."""
+            try:
+                session = await self._get_session()
+                async with session.post(OLLAMA_EMBED_URL.replace("/api/embed", "/api/chat"), json={
+                    "model": EMBED_MODEL,
+                    "messages": [{"role": "system", "content": "You are an evolution analyst. Return only a numbered list of improvements."}, {"role": "user", "content": prompt}],
+                    "stream": False
+                }, timeout=aiohttp.ClientTimeout(total=60)) as r:
+                    data = await r.json()
+                    content = data.get("message", {}).get("content", "")
+                    improvements = [line.strip().lstrip("0123456789. -") for line in content.strip().split("\n") if line.strip()]
+                    if not improvements:
+                        improvements = ["Add streaming for agent tool calls in the Web UI"]
+            except Exception as e:
+                print(f"⚠️ LLM improvement generation failed: {e}")
+                improvements = ["Add streaming for agent tool calls in the Web UI"]
 
         todo_path = self.root / "EVOLVE_TODO.md"
         with open(todo_path, 'w', encoding='utf-8') as f:
@@ -208,6 +248,8 @@ async def evolve():
     print("\n✅ Evolution complete. Check memory/LESSONS.md, EVOLVE_TODO.md, AGENTS.md")
     if ev._pool:
         await ev._pool.close()
+    if ev._session and not ev._session.closed:
+        await ev._session.close()
 
 
 if __name__ == "__main__":
