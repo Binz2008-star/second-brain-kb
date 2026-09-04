@@ -1007,6 +1007,30 @@ app.get("/api/phase3/memory", async (req: express.Request, res: express.Response
   }
 });
 
+// --- 17. GET /api/phase3/watcher/status (lightweight telemetry, no embedding) ---
+app.get("/api/phase3/watcher/status", async (_req: express.Request, res: express.Response) => {
+  let client: any = null;
+  try {
+    const pkg = await import('pg');
+    const Pool = (pkg as any).default?.Pool || (pkg as any).Pool;
+    const pool = new Pool({ connectionString: process.env.NEON_DSN || process.env.DATABASE_URL });
+    client = await pool.connect();
+    const cnt = await client.query(`SELECT COUNT(*)::int AS count FROM memory`);
+    const latest = await client.query(`SELECT created_at FROM memory ORDER BY created_at DESC LIMIT 1`);
+    res.json({
+      watching: true,
+      count: cnt.rows[0]?.count ?? 0,
+      lastIndexed: latest.rows[0]?.created_at ?? null,
+      source_file: 'memory/LESSONS.md',
+    });
+  } catch (err: any) {
+    console.error('[Watcher Status Error]:', err);
+    res.status(500).json({ error: err.message || 'Internal server error' });
+  } finally {
+    if (client) client.release();
+  }
+});
+
 // ============================================================
 //  Start Server
 // ============================================================

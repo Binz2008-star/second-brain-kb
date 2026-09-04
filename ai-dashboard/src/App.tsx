@@ -12,6 +12,7 @@ import Sidebar from "./components/Sidebar";
 import CodeReviewView from "./components/CodeReviewView";
 import { SearchWidget } from "./components/SearchWidget";
 import { MemoryExplorer } from "./components/MemoryExplorer";
+import { WatcherStatus } from "./components/WatcherStatus";
 import { AppProvider, useApp } from "./context/AppContext";
 import { Notification, ReasoningMode } from "./types/index";
 
@@ -331,6 +332,9 @@ function Workspace() {
       review: <CodeReviewView />,
       memory: (
         <div className="space-y-6">
+          <div className="flex justify-end">
+            <WatcherStatus />
+          </div>
           <SearchWidget />
           <MemoryExplorer />
         </div>
