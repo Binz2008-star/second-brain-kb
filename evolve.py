@@ -20,7 +20,7 @@ DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("NEON_DSN")
 OLLAMA_EMBED_URL = os.getenv("OLLAMA_EMBED_URL", "http://127.0.0.1:11434/api/embed")
 EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text")
 # Durable-state AGENTS.md is what OpenCode loads into context each session.
-AGENTS_MD = Path(os.getenv("SECOND_BRAIN_AGENTS_MD", r"C:\Users\loyal\.config\opencode\AGENTS.md"))
+AGENTS_MD = Path(os.getenv("SECOND_BRAIN_AGENTS_MD", str(Path(__file__).parent / "AGENTS.md")))
 
 class Evolver:
     def __init__(self):
