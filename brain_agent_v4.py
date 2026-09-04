@@ -520,6 +520,16 @@ async def run_multi_agent(task: str):
     )
     await persist_agent_history(session_id, [tester])
 
+    # Success-gated auto-commit: only commit if the Tester's tool output shows a clean pass.
+    if AUTO_COMMIT and any(
+        "Exit 0" in (m.get("content") or "")
+        for m in tester.history
+        if m.get("role") == "tool"
+    ):
+        status_result = tool_git_status()
+        if status_result.strip():
+            tool_git_commit(f"feat(agent): {task[:72]}")
+
     if memory_mgr:
         try:
             await _get_pool()  # Ensure pool is initialized for memory_mgr
@@ -528,11 +538,6 @@ async def run_multi_agent(task: str):
             await memory_mgr.add_memory("lesson", lesson_txt, CURRENT_PROJECT, embedding=lesson_emb)
         except Exception as e:
             logger.warning("Memory failed: %s", e)
-
-    if AUTO_COMMIT:
-        status_result = tool_git_status()
-        if status_result.strip():
-            tool_git_commit()
 
     logger.info("Multi-agent task complete: %s", task)
 
@@ -601,6 +606,13 @@ async def run_multi_agent_stream(task: str) -> AsyncGenerator[Dict[str, Any], No
             yield {"type": "phase", "phase": "memory", "status": "completed", "message": "Lesson recorded in long-term memory"}
         except Exception as e:
             yield {"type": "warning", "message": f"Memory save failed: {e}"}
+
+    # Success-gated auto-commit (streaming): commit only if tests passed.
+    if AUTO_COMMIT and "Exit 0" in (test_result or ""):
+        status_result = tool_git_status()
+        if status_result.strip():
+            tool_git_commit(f"feat(agent): {task[:72]}")
+            yield {"type": "phase", "phase": "commit", "status": "completed", "message": "Auto-committed changes (tests passed)"}
 
     yield {"type": "done", "session_id": session_id, "message": "All agent phases completed successfully"}
 

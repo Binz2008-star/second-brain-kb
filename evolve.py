@@ -109,12 +109,20 @@ class Evolver:
                 try:
                     emb = await self.embed(fix)
                     emb_str = "[" + ",".join(f"{x:.6f}" for x in emb) + "]"
+                    # Stable, deterministic lesson_id so re-runs upsert instead of duplicating
+                    lesson_id = f"{datetime.now():%Y-%m-%d-%H%M}-{hash(fix) & 0xffffff:06x}"
+                    tags = ["auto", "failure", "lesson"]
                     async with pool.acquire() as conn:
                         await conn.execute("""
-                            INSERT INTO memory (type, content, project_id, embedding)
-                            VALUES ($1, $2, $3, $4::vector)
-                        """, "lesson", fix, "second-brain", emb_str)
-                    print(f"   ✓ Embedded: {fix[:60]}...")
+                            INSERT INTO memory
+                                (lesson_id, source_file, content, embedding, tags, type, project_id, linked_chunk_id)
+                            VALUES ($1, $2, $3, $4::vector, $5, 'lesson', $6, NULL)
+                            ON CONFLICT (lesson_id) DO UPDATE SET
+                                content = EXCLUDED.content,
+                                embedding = EXCLUDED.embedding,
+                                tags = EXCLUDED.tags
+                        """, lesson_id, "memory/LESSONS.md", fix, emb_str, tags, "second-brain")
+                    print(f"   ✓ Embedded: {fix[:60]}... (lesson_id={lesson_id})")
                 except Exception as e:
                     print(f"   ⚠️ Failed to embed lesson: {e}")
 
@@ -146,6 +154,17 @@ class Evolver:
         if not AGENTS_MD.exists():
             print(f"   ⚠️ Auto-apply skipped: {AGENTS_MD} not found")
             return 0
+        # Fallback: derive proposals from EVOLVE_TODO.md's unchecked items when the
+        # caller supplies none. Guarded by `imp not in text` below to stay idempotent.
+        if not improvements and (self.root / "EVOLVE_TODO.md").exists():
+            try:
+                todo_text = (self.root / "EVOLVE_TODO.md").read_text(encoding="utf-8")
+                improvements = [
+                    m.group(1) for m in re.finditer(r"^- \[ \] (.+)", todo_text, re.M)
+                ]
+            except Exception as e:
+                print(f"   ⚠️ Could not read EVOLVE_TODO.md for fallback: {e}")
+                improvements = []
         text = AGENTS_MD.read_text(encoding="utf-8")
         added = [imp for imp in improvements if imp not in text]
         if not added:
