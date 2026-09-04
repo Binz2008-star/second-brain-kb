@@ -265,7 +265,7 @@ class Agent:
                             result = await func(**args) if asyncio.iscoroutinefunction(func) else func(**args)
                         except Exception as e:
                             result = f"Error: {e}"
-                    tool_msg = {"role": "tool", "content": str(result)[:8000]}
+                    tool_msg = {"role": "tool", "name": fname, "args": args, "content": str(result)[:8000]}
                     messages.append(tool_msg)
                     self.history.append(tool_msg)
 
@@ -487,6 +487,36 @@ You MUST run actual tests and lint commands to verify changes work.
 NEVER fabricate test results - you MUST invoke run_shell to execute real test commands.
 """
 
+# Tools whose invocation counts as a real verification step for the auto-commit gate.
+_TEST_TOOLS = {"run_shell", "run_tests", "lint", "typecheck"}
+# Command fragments indicating a test/lint/typecheck/build run (case-insensitive).
+_TEST_CMD_HINTS = (" test", "pytest", " npm test", "npm run lint", "npm run build",
+                   " tsc", "mypy", "ruff", "vitest", "jest", "make test")
+
+def _tester_ran_pass(tester: Agent) -> bool:
+    """True only if the Tester actually invoked a test/lint tool that passed clean.
+
+    Unlike a substring check on the Tester's prose (which the model can fabricate),
+    this inspects the recorded tool invocations in history and requires:
+      1. a tool message whose tool name is a test/lint/typecheck tool, and
+      2. for run_shell, the command actually looks like a test/lint/build/ci run, and
+      3. that tool's recorded result shows a clean exit (Exit 0:).
+    """
+    for m in tester.history:
+        if m.get("role") != "tool":
+            continue
+        name = m.get("name")
+        if name not in _TEST_TOOLS:
+            continue
+        args = m.get("args") or {}
+        cmd = str(args.get("command") or args.get("test_command") or args.get("lint_command") or args.get("typecheck_command") or "")
+        if name == "run_shell" and not any(h in cmd.lower() for h in _TEST_CMD_HINTS):
+            continue
+        content = m.get("content") or ""
+        if "Exit 0:" in content:
+            return True
+    return False
+
 async def run_multi_agent(task: str):
     logger.info("Multi-Agent Task: %s", task)
     session_id = uuid.uuid4().hex
@@ -520,12 +550,9 @@ async def run_multi_agent(task: str):
     )
     await persist_agent_history(session_id, [tester])
 
-    # Success-gated auto-commit: only commit if the Tester's tool output shows a clean pass.
-    if AUTO_COMMIT and any(
-        "Exit 0" in (m.get("content") or "")
-        for m in tester.history
-        if m.get("role") == "tool"
-    ):
+    # Success-gated auto-commit: only commit if the Tester actually ran a test/lint
+    # tool that passed cleanly (observed invocation, not fabricated prose).
+    if AUTO_COMMIT and _tester_ran_pass(tester):
         status_result = tool_git_status()
         if status_result.strip():
             tool_git_commit(f"feat(agent): {task[:72]}")
@@ -607,8 +634,9 @@ async def run_multi_agent_stream(task: str) -> AsyncGenerator[Dict[str, Any], No
         except Exception as e:
             yield {"type": "warning", "message": f"Memory save failed: {e}"}
 
-    # Success-gated auto-commit (streaming): commit only if tests passed.
-    if AUTO_COMMIT and "Exit 0" in (test_result or ""):
+    # Success-gated auto-commit (streaming): commit only if the Tester actually ran a
+    # test/lint tool that passed cleanly (observed invocation, not fabricated prose).
+    if AUTO_COMMIT and _tester_ran_pass(tester):
         status_result = tool_git_status()
         if status_result.strip():
             tool_git_commit(f"feat(agent): {task[:72]}")
