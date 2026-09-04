@@ -2,89 +2,76 @@ name: ROBEN AI Console Docker Build
 
 on:
   push:
-    branches: [ main ]
+    branches: ["main", "test-env"]
   pull_request:
-    branches: [ main ]
+    branches: ["main", "test-env"]
   schedule:
     # Weekly Docker build to keep image up-to-date
-    cron: '0 2 * * 0'
+    cron: "0 2 * * 0"
 
 jobs:
   build:
     name: Build Docker Image
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
-    services:
-      # Docker-in-Docker service for building images
-      docker:
-        image: docker:24-dind
-        ports: ["2375:2375"]
-        env:
-          DOCKER_TLS_CERT: ""
-          DOCKER_TLS_VERIFY: ""
-          DOCKER_HOST: tcp://localhost:2375
+    outputs:
+      image_tag: ${{ steps.export_tag.outputs.image_tag }}
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Set up QEMU (for multi-arch builds)
-        uses: docker/setup-qemu-action@v5
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Login to Docker Hub
-        if: ${{ secrets.DOCKERHUB_USERNAME && secrets.DOCKERHUB_TOKEN }}
-        uses: docker/login-action@v5
+        if: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and Push Docker Image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v5
         with:
-          context: .
-          file: docker/Dockerfile
-          push: ${{ secrets.DOCKERHUB_USERNAME != '' }}
+          context: ./ai-dashboard
+          file: ./ai-dashboard/Dockerfile
+          push: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/second-brain-kb:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/second-brain-kb:${{ github.sha }}
           cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/second-brain-kb:build-cache
           cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/second-brain-kb:build-cache,mode=max
-          # Build args for the Second Brain environment
           build-args: |
             NEON_DSN=${{ secrets.NEON_DSN }}
             OLLAMA_EMBED_URL=${{ secrets.OLLAMA_EMBED_URL }}
             EMBED_MODEL=${{ secrets.EMBED_MODEL }}
 
-      - name: Display Image Details
-        if: always()
-        run: |
-          echo "Image built successfully"
-          docker image ls ${{ secrets.DOCKERHUB_USERNAME }}/second-brain-kb:latest || echo "Image not pushed (private repo)"
-
       - name: Export Image Info
+        id: export_tag
         if: always()
         run: |
-          echo "IMAGE_TAG=${{ secrets.DOCKERHUB_USERNAME }}/second-brain-kb:latest" >> $GITHUB_ENV
+          TAG="${{ secrets.DOCKERHUB_USERNAME }}/second-brain-kb:latest"
+          echo "IMAGE_TAG=${TAG}" >> $GITHUB_ENV
+          echo "image_tag=${TAG}" >> $GITHUB_OUTPUT
 
-# Deployment job (runs after build)
-deploy:
-  needs: build
-  if: github.ref == 'refs/heads/main'
-  runs-on: ubuntu-latest
-  timeout-minutes: 15
+  deploy:
+    name: Deploy Docker Image
+    needs: build
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/test-env'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
 
-  steps:
+    steps:
       - name: Display Deployment Info
         run: |
-          echo "🚀 Deploying Docker image: ${{ env.IMAGE_TAG }}"
-          echo "📦 Image size: $(docker image ls ${{ env.IMAGE_TAG }} --format '{{.Size}}')"
-          
+          echo "🚀 Deploying Docker image: ${{ needs.build.outputs.image_tag }}"
+
       - name: Documentation
         run: |
           echo "✅ Docker CI/CD Pipeline Complete"
-          echo "📋 Image: ${{ env.IMAGE_TAG }}"
-          echo "🌐 Use: docker pull ${{ env.IMAGE_TAG }}"
+          echo "📋 Image: ${{ needs.build.outputs.image_tag }}"
+          echo "🌐 Use: docker pull ${{ needs.build.outputs.image_tag }}"

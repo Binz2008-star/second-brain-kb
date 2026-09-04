@@ -8,7 +8,7 @@ import { createServer as createViteServer } from "vite";
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 // ============================================================
 //  Environment Configuration
@@ -208,7 +208,6 @@ app.get("/api/system", (_req, res) => {
 // --- 2. GET /api/projects ---
 app.get("/api/projects", (_req, res) => {
   const projectsList = Object.entries(PROJECTS_DEF).map(([id, info]) => ({
-    id,
     ...info,
     active: id === currentProjectId,
   }));
@@ -254,14 +253,13 @@ app.post("/api/projects/create", (req, res) => {
   currentProjectId = finalId;
 
   const projectsList = Object.entries(PROJECTS_DEF).map(([id, info]) => ({
-    id,
     ...info,
     active: id === currentProjectId,
   }));
 
   res.json({
     success: true,
-    newProject: { id: finalId, ...PROJECTS_DEF[finalId], active: true },
+    newProject: { ...PROJECTS_DEF[finalId], active: true },
     projects: projectsList,
     activeProject: currentProjectId,
   });
@@ -781,14 +779,13 @@ app.post("/api/github/import", async (req, res) => {
     currentProjectId = finalId;
 
     const projectsList = Object.entries(PROJECTS_DEF).map(([id, info]) => ({
-      id,
       ...info,
       active: id === currentProjectId,
     }));
 
     res.json({
       success: true,
-      newProject: { id: finalId, ...PROJECTS_DEF[finalId], active: true },
+      newProject: { ...PROJECTS_DEF[finalId], active: true },
       projects: projectsList,
       activeProject: currentProjectId,
       repo: {
@@ -815,7 +812,7 @@ if (process.env.VITE === "true" && !module.parent) {
   viteServer = await createViteServer({
     configFile: false,
     root: path.resolve("./"),
-    server: { middleware: true },
+    server: { middlewareMode: true },
   });
   app.use(viteServer.middlewares);
 } else {
@@ -854,7 +851,7 @@ export { server };
 // Graceful shutdown
 process.on("SIGTERM", async () => {
   console.log("🛑 Received SIGTERM. Shutting down gracefully...");
-  await new Promise<void>((resolve) => resolve(server.close()));
+  await new Promise<void>((resolve) => server.close(() => resolve()));
   if (viteServer) {
     await viteServer?.close();
   }
@@ -863,7 +860,7 @@ process.on("SIGTERM", async () => {
 
 process.on("SIGINT", async () => {
   console.log("🛑 Received SIGINT. Shutting down gracefully...");
-  await new Promise<void>((resolve) => resolve(server.close()));
+  await new Promise<void>((resolve) => server.close(() => resolve()));
   if (viteServer) {
     await viteServer?.close();
   }

@@ -9,6 +9,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Header from "./components/Header";
 import Sidebar from "./components/Sidebar";
+import CodeReviewView from "./components/CodeReviewView";
 import { AppProvider, useApp } from "./context/AppContext";
 import { Notification, ReasoningMode } from "./types/index";
 
@@ -183,9 +184,9 @@ function AgentChatView() {
   };
 
   const modes: { id: ReasoningMode; label: string; desc: string }[] = [
-    { id: "fast", label: "⚡ Fast", desc: "Quick direct execution" },
-    { id: "deep_reasoning", label: "🧠 Deep Reasoning", desc: "Multi-step analytical reflection" },
-    { id: "architect", label: "🏗️ Architect", desc: "System design & structured planning" },
+    { id: ReasoningMode.Fast, label: "⚡ Fast", desc: "Quick direct execution" },
+    { id: ReasoningMode.DeepReasoning, label: "🧠 Deep Reasoning", desc: "Multi-step analytical reflection" },
+    { id: ReasoningMode.Architect, label: "🏗️ Architect", desc: "System design & structured planning" },
   ];
 
   return (
@@ -325,12 +326,7 @@ function Workspace() {
     () => ({
       dashboard: <DashboardView />,
       chat: <AgentChatView />,
-      review: (
-        <PlaceholderView
-          title="CODE REVIEW"
-          description="Paste code to run AI-powered static analysis, scoring, and suggestions."
-        />
-      ),
+      review: <CodeReviewView />,
       memory: (
         <PlaceholderView
           title="MEMORY"

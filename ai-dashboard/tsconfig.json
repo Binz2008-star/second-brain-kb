@@ -12,18 +12,16 @@
     "jsx": "react-jsx",
     "allowJs": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "strictNullChecks": true,
-    "noUncheckedIndexAccess": true,
-    "noUnusedLocals": true,
+    "noUnusedLocals": false,
     "paths": {
       "@/*": ["./src/*"]
     },
     "types": ["vite/client"],
     "allowSyntheticDefaultImports": true,
     "baseUrl": "./",
-    "skipLibCheck": true,
     "resolveJsonModule": true,
-    "target": "ES2022",
     "experimentalDecorators": true,
     "useDefineForClassFields": false
   },

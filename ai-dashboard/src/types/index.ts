@@ -146,8 +146,8 @@ export interface CodeReviewInput {
 
 export enum ReasoningMode {
   Fast = "fast",
-  Advanced = "advanced",
-  Security = "security",
+  DeepReasoning = "deep_reasoning",
+  Architect = "architect",
 }
 
 export interface AppState {
@@ -186,7 +186,7 @@ export interface Notification {
   title: string;
   message: string;
   timestamp: number;
-  autoDismiss: boolean;
+  autoDismiss?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -231,6 +231,8 @@ export interface SystemResponse {
   memory: MemoryTelemetry;
   disk: DiskTelemetry;
   neonConnected: boolean;
+  uptime?: number;
+  procs?: number;
 }
 
 export interface ProjectResponse {

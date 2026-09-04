@@ -27,7 +27,7 @@ import {
   ProjectInfo,
   ReasoningMode,
   SystemResponse,
-} from "../types";
+} from "../types/index";
 
 // ---------------------------------------------------------------------------
 //  API Base URL
@@ -83,6 +83,9 @@ export interface AppContextValue {
 
   /** Notifications */
   notifications: Notification[];
+  addNotification: (
+    notification: Omit<Notification, "timestamp">
+  ) => void;
   pushNotification: (
     type: Notification["type"],
     title: string,
@@ -140,7 +143,7 @@ function makeNotification(
 export function AppProvider({ children }: { children: ReactNode }) {
   // --- Core State ---
   const [reasoningMode, setReasoningMode] = useState<ReasoningMode>(
-    ReasoningMode.Advanced
+    ReasoningMode.DeepReasoning
   );
 
   // --- Projects ---
@@ -202,6 +205,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ]);
     },
     []
+  );
+
+  const addNotification = useCallback(
+    (notification: Omit<Notification, "timestamp">) => {
+      pushNotification(
+        notification.type,
+        notification.title,
+        notification.message,
+        notification.autoDismiss
+      );
+    },
+    [pushNotification]
   );
 
   const dismissNotification = useCallback((id: string) => {
@@ -462,6 +477,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       refreshLessons,
 
       notifications,
+      addNotification,
       pushNotification,
       dismissNotification,
       clearNotifications,
@@ -491,6 +507,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       lessons,
       refreshLessons,
       notifications,
+      addNotification,
       pushNotification,
       dismissNotification,
       clearNotifications,

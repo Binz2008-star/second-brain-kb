@@ -8,7 +8,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../context/AppContext";
-import { ReasoningMode } from "../types";
+import { ReasoningMode } from "../types/index";
 
 // ---------------------------------------------------------------------------
 //  Utility: format bytes
@@ -183,8 +183,8 @@ function ModeSelector() {
 
   const modes: { value: ReasoningMode; label: string; desc: string; color: string }[] = [
     { value: ReasoningMode.Fast, label: "⚡ Fast", desc: "Immediate response", color: "#22c55e" },
-    { value: ReasoningMode.Advanced, label: "🧠 Advanced", desc: "Deep reasoning", color: "#22d3ee" },
-    { value: ReasoningMode.Security, label: "🔒 Security", desc: "Security focused", color: "#f59e0b" },
+    { value: ReasoningMode.DeepReasoning, label: "🧠 Deep Reasoning", desc: "Deep reasoning", color: "#22d3ee" },
+    { value: ReasoningMode.Architect, label: "🏗️ Architect", desc: "Architecture focus", color: "#a78bfa" },
   ];
 
   useEffect(() => {
@@ -296,7 +296,7 @@ export default function Header() {
   }, []);
 
   const lastLatency = useMemo(
-    () => (latencyHistory.length ? latencyHistory[0].totalLatencyMs : undefined),
+    () => (latencyHistory.length ? latencyHistory[0]?.totalLatencyMs : undefined),
     [latencyHistory]
   );
 
