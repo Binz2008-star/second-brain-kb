@@ -8,6 +8,7 @@ import { streamChat, hasAnthropicKey } from "./src/lib/anthropic.ts";
 import { estimateTokens, usableBudget, needsCompression, computeBudget } from "./src/lib/budget.ts";
 import { compressHistory } from "./src/lib/compress.ts";
 import { decideRoute } from "./src/middleware/routing.ts";
+import { searchMemory, hybridSearch } from "./src/lib/search.ts";
 import type { ChatRequest, Route, Message, BudgetInfo } from "./src/types/phase3.ts";
 
 dotenv.config();
@@ -960,6 +961,22 @@ function handlePhase3Chat(req: express.Request, res: express.Response): void {
 
 app.post("/api/phase3/chat", handlePhase3Chat);
 app.post("/api/phase3/chat/stream", handlePhase3Chat);
+
+// --- 15. POST /api/phase3/search (semantic + hybrid RRF over memory) ---
+app.post("/api/phase3/search", async (req, res) => {
+  try {
+    const { query, topK = 5, mode = "hybrid" } = req.body || {};
+    if (!query || !String(query).trim()) {
+      return res.status(400).json({ error: "query required" });
+    }
+    const k = Math.min(20, Math.max(1, Number(topK) || 5));
+    const results =
+      mode === "memory" ? await searchMemory(String(query), k) : await hybridSearch(String(query), k);
+    res.json({ query, mode, topK: k, results, count: results.length });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Search failed" });
+  }
+});
 
 // ============================================================
 //  Start Server
