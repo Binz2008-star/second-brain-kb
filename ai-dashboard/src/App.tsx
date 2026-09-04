@@ -10,6 +10,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Header from "./components/Header";
 import Sidebar from "./components/Sidebar";
 import CodeReviewView from "./components/CodeReviewView";
+import { SearchWidget } from "./components/SearchWidget";
+import { MemoryExplorer } from "./components/MemoryExplorer";
 import { AppProvider, useApp } from "./context/AppContext";
 import { Notification, ReasoningMode } from "./types/index";
 
@@ -328,10 +330,10 @@ function Workspace() {
       chat: <AgentChatView />,
       review: <CodeReviewView />,
       memory: (
-        <PlaceholderView
-          title="MEMORY"
-          description="Browse the Second Brain knowledge graph, lessons, and evolution TODO."
-        />
+        <div className="space-y-6">
+          <SearchWidget />
+          <MemoryExplorer />
+        </div>
       ),
       projects: (
         <PlaceholderView
