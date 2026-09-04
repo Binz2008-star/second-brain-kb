@@ -8,6 +8,7 @@ import { streamChat, hasAnthropicKey } from "./src/lib/anthropic.ts";
 import { estimateTokens, usableBudget, needsCompression, computeBudget } from "./src/lib/budget.ts";
 import { compressHistory } from "./src/lib/compress.ts";
 import { decideRoute } from "./src/middleware/routing.ts";
+import { searchMemory, hybridSearch } from "./src/lib/search.ts";
 import type { ChatRequest, Route, Message, BudgetInfo } from "./src/types/phase3.ts";
 
 dotenv.config();
@@ -960,6 +961,27 @@ function handlePhase3Chat(req: express.Request, res: express.Response): void {
 
 app.post("/api/phase3/chat", handlePhase3Chat);
 app.post("/api/phase3/chat/stream", handlePhase3Chat);
+
+// --- 15. POST/GET /api/phase3/search (semantic + hybrid RRF over memory) ---
+async function handlePhase3Search(req: express.Request, res: express.Response): Promise<void> {
+  try {
+    const q = (req.query.q as string) || (req.body?.query as string) || (req.body?.q as string);
+    const mode = (req.query.mode as string) || (req.body?.mode as string) || 'hybrid';
+    const topKRaw = (req.query.topK as string) || (req.body?.topK as string) || '5';
+    if (!q || !String(q).trim()) {
+      res.status(400).json({ error: 'Missing query parameter "q" (or "query")' });
+      return;
+    }
+    const k = Math.min(20, Math.max(1, parseInt(String(topKRaw), 10) || 5));
+    const results = mode === 'memory' ? await searchMemory(String(q), k) : await hybridSearch(String(q), k);
+    res.json({ query: q, mode, topK: k, results, count: results.length });
+  } catch (err: any) {
+    console.error('[Search API Error]:', err);
+    res.status(500).json({ error: err.message || 'Internal search error' });
+  }
+}
+app.post("/api/phase3/search", handlePhase3Search);
+app.get("/api/phase3/search", handlePhase3Search);
 
 // ============================================================
 //  Start Server
