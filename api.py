@@ -38,6 +38,8 @@ import asyncpg
 import aiohttp
 import psutil
 
+from intent_router import detect_emotion, detect_lang, extract_intent_text
+
 ROOT = Path(__file__).parent
 load_dotenv(ROOT / ".env")
 
@@ -145,63 +147,14 @@ class MemoryRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # Language & Emotional Intent Router (FastAPI dependency)
 # ---------------------------------------------------------------------------
-ARABIC_UNICODE_MIN = 0x0600
-ARABIC_UNICODE_MAX = 0x06FF
-
-EMOTION_KEYWORDS = {
-    "urgency": [
-        "asap", "urgent", "immediately", "hurry", "quick", "now",
-        "عاجل", "فورا", "بسرعة", "ضروري", "مستعجل",
-    ],
-    "frustration": [
-        "annoying", "frustrated", "frustrating", "stupid", "broken",
-        "not working", "fix this", "worst", "hate",
-        "مزعج", "سيء", "معطل", "خاطئ", "غاضب", "منزعج", "لا يعمل",
-    ],
-    "satisfaction": [
-        "great", "awesome", "excellent", "perfect", "wonderful", "love it",
-        "ممتاز", "رائع", "مثالي", "أحسنت",
-    ],
-    "confusion": [
-        "confused", "unclear", "not sure", "what do you mean", "huh",
-        "مش فاهم", "غير واضح", "لا أفهم", "مش واضح",
-    ],
-}
-
-DEFAULT_EMOTION = "neutral"
-
-
-def detect_lang(text: str) -> str:
-    """Return 'ar' if any Arabic Unicode character is present, else 'en'."""
-    for ch in text:
-        if ARABIC_UNICODE_MIN <= ord(ch) <= ARABIC_UNICODE_MAX:
-            return "ar"
-    return "en"
-
-
-def detect_emotion(text: str) -> str:
-    """Scan lowercased text for common emotional indicator keywords."""
-    lowered = text.lower()
-    for emotion, keywords in EMOTION_KEYWORDS.items():
-        if any(kw in lowered for kw in keywords):
-            return emotion
-    return DEFAULT_EMOTION
-
-
 async def detect_intent(req: Request) -> dict:
     """FastAPI dependency: inspect JSON payload (query/message/task) -> intent dict."""
-    raw_text = ""
     try:
         body = await req.json()
     except Exception:
         body = {}
 
-    if isinstance(body, dict):
-        for key in ("query", "message", "task"):
-            value = body.get(key)
-            if isinstance(value, str) and value.strip():
-                raw_text = value
-                break
+    raw_text = extract_intent_text(body)
 
     # Fallback for GET/query-string endpoints (e.g. /api/agent/stream?task=...)
     if not raw_text:

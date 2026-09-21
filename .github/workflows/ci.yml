@@ -33,3 +33,21 @@ jobs:
       - name: Test Project Build (ai-dashboard)
         working-directory: ai-dashboard
         run: npm run build
+  python-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Test Dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run Unit Tests
+        run: pytest
